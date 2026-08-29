@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Passkey Portal</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --panel-2: #fbfcfd;
+    --line: #e3e6ea;
+    --text: #16191d;
+    --muted: #6b7280;
+    --accent: #1f6feb;
+    --accent-ink: #ffffff;
+    --ok: #197a4b;
+    --ok-bg: #e7f5ee;
+    --warn: #a15c00;
+    --warn-bg: #fdf3e2;
+    --err: #b3261e;
+    --err-bg: #fdecea;
+    --radius: 12px;
+    --shadow: 0 1px 2px rgba(16,24,40,.05), 0 8px 24px rgba(16,24,40,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1216; --panel: #171b21; --panel-2: #1c2128; --line: #2a3038;
+      --text: #e7eaee; --muted: #9aa4b2; --accent: #4c8dff; --accent-ink: #08131f;
+      --ok: #7ee2ae; --ok-bg: #10281d; --warn: #ffd08a; --warn-bg: #2a2113;
+      --err: #ff9d95; --err-bg: #2c1614;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 24px 20px 64px; }
+  .center { min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+  }
+  .auth-card { width: min(440px, 100%); padding: 28px; }
+
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -.01em; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 22px; }
+
+  .fp {
+    width: 46px; height: 46px; display: grid; place-items: center;
+    border-radius: 12px; background: var(--panel-2); border: 1px solid var(--line);
+    margin-bottom: 14px;
+  }
+  .fp svg { width: 26px; height: 26px; stroke: var(--accent); fill: none; stroke-width: 1.6;
+            stroke-linecap: round; stroke-linejoin: round; }
+
+  label { display: block; font-size: 13px; font-weight: 600; margin: 0 0 6px; }
+  input[type=text], input[type=email], input[type=password] {
+    width: 100%; padding: 11px 12px; font-size: 15px; color: var(--text);
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px;
+    outline: none;
+  }
+  input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+  .field { margin-bottom: 14px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 auto; }
+
+  button {
+    font: inherit; font-weight: 600; cursor: pointer; border-radius: 9px;
+    padding: 11px 14px; border: 1px solid var(--line); background: var(--panel-2);
+    color: var(--text); transition: filter .12s ease, opacity .12s ease;
+  }
+  button:hover:not(:disabled) { filter: brightness(1.04); }
+  button:disabled { opacity: .55; cursor: default; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  button.full { width: 100%; display: flex; align-items: center; justify-content: center; gap: 9px; }
+  button.small { padding: 6px 10px; font-size: 13px; font-weight: 500; }
+  button.danger { color: var(--err); }
+  button svg { width: 18px; height: 18px; stroke: currentColor; fill: none;
+               stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+  .divider { display: flex; align-items: center; gap: 12px; color: var(--muted);
+             font-size: 12px; margin: 18px 0; }
+  .divider::before, .divider::after { content: ""; height: 1px; background: var(--line); flex: 1; }
+
+  .tabs { display: flex; gap: 4px; background: var(--panel-2); padding: 4px;
+          border-radius: 10px; border: 1px solid var(--line); margin-bottom: 20px; }
+  .tabs button { flex: 1; background: transparent; border: none; padding: 8px;
+                 font-size: 14px; color: var(--muted); }
+  .tabs button[aria-selected=true] { background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+
+  .msg { padding: 10px 12px; border-radius: 9px; font-size: 13.5px; margin-bottom: 14px; display: none; }
+  .msg.show { display: block; }
+  .msg.err { background: var(--err-bg); color: var(--err); }
+  .msg.ok  { background: var(--ok-bg); color: var(--ok); }
+  .msg.warn{ background: var(--warn-bg); color: var(--warn); }
+
+  header.bar { display: flex; align-items: center; justify-content: space-between;
+               gap: 14px; margin-bottom: 22px; flex-wrap: wrap; }
+  .who { display: flex; align-items: center; gap: 11px; }
+  .avatar { width: 38px; height: 38px; border-radius: 50%; background: var(--accent);
+            color: var(--accent-ink); display: grid; place-items: center; font-weight: 700; }
+  .who small { display: block; color: var(--muted); }
+
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .panel { padding: 20px; }
+  .stat { font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
+  .stat-label { color: var(--muted); font-size: 13px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  .scroll { overflow-x: auto; }
+
+  .pill { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 8px;
+          border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); }
+  .pill.ok { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+  .pill.err { background: var(--err-bg); color: var(--err); border-color: transparent; }
+  .pill.accent { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); border-color: transparent; }
+
+  .empty { color: var(--muted); font-size: 14px; padding: 18px 0; text-align: center; }
+  .muted { color: var(--muted); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+  .spin { width: 15px; height: 15px; border: 2px solid currentColor; border-right-color: transparent;
+          border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .hidden { display: none !important; }
+  .stack { display: grid; gap: 16px; }
+  .listitem { display: flex; align-items: center; justify-content: space-between;
+              gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .listitem:last-child { border-bottom: none; }
+</style>
+</head>
+<body>
+
+<!-- ======================================================= SIGNED OUT === -->
+<div id="view-auth" class="center">
+  <div class="card auth-card">
+    <div class="fp" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M12 10.5v5.2"/><path d="M9.6 11a2.4 2.4 0 0 1 4.8 0v2.2a7 7 0 0 1-.6 2.8"/><path d="M7.1 12.4V11a4.9 4.9 0 0 1 9.8 0v2.2a11 11 0 0 1-.8 4.1"/><path d="M4.6 13.2V11a7.4 7.4 0 0 1 3.6-6.3"/><path d="M19.4 13.4V11a7.4 7.4 0 0 0-4.5-6.8"/><path d="M6.8 18.4a10 10 0 0 0 1.5-3.6"/><path d="M12 19.6a9 9 0 0 1-.9-2.9"/></svg>
+    </div>
+    <h1 id="auth-title">Sign in</h1>
+    <p class="sub" id="auth-sub">Use your fingerprint, or your email and password.</p>
+
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-signin" aria-selected="true">Sign in</button>
+      <button role="tab" id="tab-signup" aria-selected="false">Create account</button>
+    </div>
+
+    <div id="auth-msg" class="msg"></div>
+
+    <!-- sign in -->
+    <form id="form-signin">
+      <button type="button" id="btn-passkey" class="primary full" style="margin-bottom:6px">
+        <svg viewBox="0 0 24 24"><path d="M12 10.5v5.2"/><path d="M9.6 11a2.4 2.4 0 0 1 4.8 0v2.2a7 7 0 0 1-.6 2.8"/><path d="M7.1 12.4V11a4.9 4.9 0 0 1 9.8 0v2.2a11 11 0 0 1-.8 4.1"/><path d="M4.6 13.2V11a7.4 7.4 0 0 1 3.6-6.3"/><path d="M19.4 13.4V11a7.4 7.4 0 0 0-4.5-6.8"/></svg>
+        <span>Sign in with fingerprint</span>
+      </button>
+      <p class="muted" style="font-size:12.5px;margin:0 0 4px">
+        Touch ID, Windows Hello, or your phone's fingerprint sensor.
+      </p>
+
+      <div class="divider">or use your password</div>
+
+      <div class="field">
+        <label for="si-email">Email</label>
+        <input id="si-email" type="email" autocomplete="username webauthn" required>
+      </div>
+      <div class="field">
+        <label for="si-pass">Password</label>
+        <input id="si-pass" type="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="full" id="btn-signin">Sign in</button>
+    </form>
+
+    <!-- sign up -->
+    <form id="form-signup" class="hidden">
+      <div class="field">
+        <label for="su-name">Name</label>
+        <input id="su-name" type="text" autocomplete="name" placeholder="Madz Geraldez">
+      </div>
+      <div class="field">
+        <label for="su-email">Email</label>
+        <input id="su-email" type="email" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label for="su-pass">Password</label>
+        <input id="su-pass" type="password" autocomplete="new-password" required>
+        <p class="muted" style="font-size:12.5px;margin:6px 0 0">
+          At least 10 characters, with letters and numbers. You'll add your
+          fingerprint on the next screen.
+        </p>
+      </div>
+      <button type="submit" class="primary full" id="btn-signup">Create account</button>
+    </form>
+  </div>
+</div>
+
+<!-- ======================================================== SIGNED IN === -->
+<div id="view-app" class="wrap hidden">
+  <header class="bar">
+    <div class="who">
+      <div class="avatar" id="avatar">–</div>
+      <div>
+        <strong id="who-name">–</strong>
+        <small id="who-email">–</small>
+      </div>
+    </div>
+    <div class="row" style="flex:0 0 auto">
+      <button class="small" id="btn-admin-toggle">Admin</button>
+      <button class="small" id="btn-logout">Sign out</button>
+    </div>
+  </header>
+
+  <div id="app-msg" class="msg"></div>
+
+  <!-- ---- dashboard ---- -->
+  <div id="pane-dash" class="stack">
+    <div class="grid">
+      <div class="card panel">
+        <div class="stat-label">Signed in with</div>
+        <div class="stat" id="stat-method">–</div>
+      </div>
+      <div class="card panel">
+        <div class="stat-label">Enrolled fingerprints</div>
+        <div class="stat" id="stat-passkeys">0</div>
+      </div>
+      <div class="card panel">
+        <div class="stat-label">Session expires</div>
+        <div class="stat" id="stat-expiry" style="font-size:18px">–</div>
+      </div>
+    </div>
+
+    <div class="card panel">
+      <div class="row" style="align-items:center;justify-content:space-between;margin-bottom:6px">
+        <h2 style="margin:0">Fingerprint sign-in</h2>
+        <button class="primary small" id="btn-enroll" style="flex:0 0 auto;padding:8px 14px">Add this device</button>
+      </div>
+      <p class="muted" style="margin:0 0 10px;font-size:13.5px">
+        Each device you enrol stores a private key in its secure hardware. Your
+        fingerprint never leaves the device — only a signature does.
+      </p>
+      <div id="cred-list"></div>
+    </div>
+
+    <div class="card panel">
+      <h2>Change password</h2>
+      <form id="form-pw">
+        <div class="row">
+          <div class="field" style="flex:1 1 220px">
+            <label for="pw-current">Current password</label>
+            <input id="pw-current" type="password" autocomplete="current-password">
+          </div>
+          <div class="field" style="flex:1 1 220px">
+            <label for="pw-new">New password</label>
+            <input id="pw-new" type="password" autocomplete="new-password">
+          </div>
+        </div>
+        <button class="small" type="submit">Update password</button>
+        <span class="muted" style="font-size:12.5px;margin-left:8px">
+          This signs you out everywhere.
+        </span>
+      </form>
+    </div>
+  </div>
+
+  <!-- ---- admin ---- -->
+  <div id="pane-admin" class="stack hidden">
+    <div class="grid" id="admin-stats"></div>
+
+    <div class="card panel">
+      <h2>Users</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr>
+            <th>User</th><th>Role</th><th>Status</th><th>Passkeys</th>
+            <th>Last sign-in</th><th></th>
+          </tr></thead>
+          <tbody id="admin-users"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card panel">
+      <div class="row" style="align-items:center;justify-content:space-between">
+        <h2 style="margin:0">Recent activity</h2>
+        <button class="small" id="btn-refresh-audit" style="flex:0 0 auto">Refresh</button>
+      </div>
+      <div class="scroll" style="max-height:420px;overflow-y:auto;margin-top:10px">
+        <table>
+          <thead><tr><th>When</th><th>Who</th><th>Event</th><th>Detail</th></tr></thead>
+          <tbody id="admin-audit"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================================
+ *  CONFIGURE ME
+ *  Paste the /exec URL of your Apps Script deployment here.
+ * ========================================================================= */
+const API_URL = 'PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE';
+
+/* ---------------------------------------------------------------- utils -- */
+const $ = sel => document.querySelector(sel);
+const TOKEN_KEY = 'passkey-portal.token';
+
+let state = { token: localStorage.getItem(TOKEN_KEY) || null, user: null, credentials: [] };
+
+/** POST as text/plain so the browser skips the CORS preflight Apps Script can't answer. */
+async function api(action, params = {}) {
+  if (API_URL.startsWith('PASTE_')) {
+    throw new Error('Set API_URL at the top of this file to your Apps Script /exec URL.');
+  }
+  const body = Object.assign({ action, userAgent: navigator.userAgent }, params);
+  if (state.token && !('token' in params)) body.token = state.token;
+
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(body),
+    redirect: 'follow'
+  });
+  const text = await res.text();
+  let json;
+  try { json = JSON.parse(text); }
+  catch (e) { throw new Error('Unexpected reply from the server. Check the deployment URL and that access is set to "Anyone".'); }
+  if (!json.ok) {
+    const err = new Error(json.error || 'Request failed.');
+    err.status = json.status;
+    throw err;
+  }
+  return json;
+}
+
+const b64uToBuf = s => {
+  const pad = '='.repeat((4 - s.length % 4) % 4);
+  const bin = atob((s + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return buf;
+};
+const bufToB64u = buf => {
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+
+function message(el, text, kind = 'err') {
+  el.textContent = text;
+  el.className = 'msg show ' + kind;
+  if (kind === 'ok') setTimeout(() => { if (el.textContent === text) el.className = 'msg'; }, 4000);
+}
+function clearMessage(el) { el.className = 'msg'; }
+
+function busy(btn, on, label) {
+  if (on) {
+    btn.dataset.label = btn.innerHTML;
+    btn.innerHTML = '<span class="spin"></span><span>' + (label || 'Working…') + '</span>';
+    btn.disabled = true;
+  } else {
+    if (btn.dataset.label) btn.innerHTML = btn.dataset.label;
+    btn.disabled = false;
+  }
+}
+
+function deviceName() {
+  const ua = navigator.userAgent;
+  const plat = /iPhone/.test(ua) ? 'iPhone'
+    : /iPad/.test(ua) ? 'iPad'
+    : /Android/.test(ua) ? 'Android phone'
+    : /Mac OS X/.test(ua) ? 'Mac'
+    : /Windows/.test(ua) ? 'Windows PC'
+    : /Linux/.test(ua) ? 'Linux PC' : 'This device';
+  const browser = /Edg\//.test(ua) ? 'Edge'
+    : /OPR\//.test(ua) ? 'Opera'
+    : /Chrome\//.test(ua) ? 'Chrome'
+    : /Firefox\//.test(ua) ? 'Firefox'
+    : /Safari\//.test(ua) ? 'Safari' : 'browser';
+  return plat + ' · ' + browser;
+}
+
+function friendlyWebAuthnError(err) {
+  const n = err && err.name;
+  if (n === 'NotAllowedError') return 'Cancelled, or the fingerprint prompt timed out.';
+  if (n === 'InvalidStateError') return 'This device already has a passkey for your account.';
+  if (n === 'SecurityError') return 'This page must be served over https on the domain configured as RP_ID.';
+  if (n === 'NotSupportedError') return 'This browser or device has no compatible fingerprint sensor.';
+  if (n === 'AbortError') return 'The fingerprint prompt was dismissed.';
+  return (err && err.message) || 'Fingerprint sign-in failed.';
+}
+
+/* ------------------------------------------------------------ webauthn -- */
+async function platformAuthenticatorAvailable() {
+  if (!window.PublicKeyCredential) return false;
+  try {
+    return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+  } catch (e) { return false; }
+}
+
+async function enrolFingerprint() {
+  const { options } = await api('passkey.registerBegin');
+  const publicKey = {
+    challenge: b64uToBuf(options.challenge),
+    rp: options.rp,
+    user: {
+      id: b64uToBuf(options.user.id),
+      name: options.user.name,
+      displayName: options.user.displayName
+    },
+    pubKeyCredParams: options.pubKeyCredParams,
+    timeout: options.timeout,
+    attestation: options.attestation,
+    authenticatorSelection: options.authenticatorSelection,
+    excludeCredentials: (options.excludeCredentials || []).map(c => ({
+      type: c.type, id: b64uToBuf(c.id)
+    }))
+  };
+  const cred = await navigator.credentials.create({ publicKey });
+  if (!cred) throw new Error('No credential was created.');
+
+  return api('passkey.registerFinish', {
+    label: deviceName(),
+    credential: {
+      id: cred.id,
+      rawId: bufToB64u(cred.rawId),
+      type: cred.type,
+      transports: cred.response.getTransports ? cred.response.getTransports() : [],
+      response: {
+        clientDataJSON: bufToB64u(cred.response.clientDataJSON),
+        attestationObject: bufToB64u(cred.response.attestationObject)
+      }
+    }
+  });
+}
+
+async function signInWithFingerprint(email, mediation) {
+  const { options } = await api('passkey.loginBegin', { email: email || '', token: '' });
+  const publicKey = {
+    challenge: b64uToBuf(options.challenge),
+    rpId: options.rpId,
+    timeout: options.timeout,
+    userVerification: options.userVerification,
+    allowCredentials: (options.allowCredentials || []).map(c => ({
+      type: c.type, id: b64uToBuf(c.id), transports: c.transports
+    }))
+  };
+  const request = { publicKey };
+  if (mediation) request.mediation = mediation;
+
+  const assertion = await navigator.credentials.get(request);
+  if (!assertion) throw new Error('No assertion returned.');
+
+  const r = assertion.response;
+  return api('passkey.loginFinish', {
+    token: '',
+    assertion: {
+      id: assertion.id,
+      rawId: bufToB64u(assertion.rawId),
+      type: assertion.type,
+      response: {
+        clientDataJSON: bufToB64u(r.clientDataJSON),
+        authenticatorData: bufToB64u(r.authenticatorData),
+        signature: bufToB64u(r.signature),
+        userHandle: r.userHandle ? bufToB64u(r.userHandle) : null
+      }
+    }
+  });
+}
+
+/* --------------------------------------------------------------- views -- */
+function showAuth() {
+  $('#view-auth').classList.remove('hidden');
+  $('#view-app').classList.add('hidden');
+}
+
+function showApp() {
+  $('#view-auth').classList.add('hidden');
+  $('#view-app').classList.remove('hidden');
+}
+
+function renderUser(data) {
+  state.user = data.user;
+  state.credentials = data.credentials || [];
+  const u = data.user;
+
+  $('#avatar').textContent = (u.name || u.email).trim().charAt(0).toUpperCase();
+  $('#who-name').textContent = u.name || u.email;
+  $('#who-email').textContent = u.email + (u.role === 'admin' ? ' · administrator' : '');
+  $('#btn-admin-toggle').classList.toggle('hidden', u.role !== 'admin');
+
+  $('#stat-method').textContent =
+    (data.session && data.session.method === 'passkey') ? 'Fingerprint' : 'Password';
+  $('#stat-passkeys').textContent =
+    state.credentials.filter(c => c.status === 'active').length;
+  $('#stat-expiry').textContent = data.session
+    ? new Date(data.session.expiresAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+    : '–';
+
+  renderCredentials();
+}
+
+function renderCredentials() {
+  const host = $('#cred-list');
+  if (!state.credentials.length) {
+    host.innerHTML = '<div class="empty">No devices enrolled yet. ' +
+      'Add this one so you can sign in with a touch next time.</div>';
+    return;
+  }
+  host.innerHTML = state.credentials.map(c => `
+    <div class="listitem">
+      <div>
+        <strong>${escapeHtml(c.label)}</strong>
+        ${c.status !== 'active' ? '<span class="pill err">suspended</span>' : ''}
+        ${c.backedUp ? '<span class="pill">synced</span>' : ''}
+        <div class="muted" style="font-size:12.5px">
+          Added ${fmtDate(c.createdAt)}${c.lastUsedAt ? ' · last used ' + fmtDate(c.lastUsedAt) : ' · never used'}
+        </div>
+      </div>
+      <div class="row" style="flex:0 0 auto">
+        <button class="small" data-rename="${c.id}">Rename</button>
+        <button class="small danger" data-remove="${c.id}">Remove</button>
+      </div>
+    </div>`).join('');
+
+  host.querySelectorAll('[data-remove]').forEach(btn => {
+    btn.onclick = async () => {
+      if (state.credentials.filter(c => c.status === 'active').length === 1 &&
+          !confirm('This is your only enrolled device. Remove it and sign in with your password instead?')) return;
+      busy(btn, true, 'Removing');
+      try {
+        await api('passkey.remove', { credentialId: btn.dataset.remove });
+        await refresh();
+        message($('#app-msg'), 'Device removed.', 'ok');
+      } catch (e) { message($('#app-msg'), e.message); }
+      finally { busy(btn, false); }
+    };
+  });
+  host.querySelectorAll('[data-rename]').forEach(btn => {
+    btn.onclick = async () => {
+      const current = state.credentials.find(c => c.id === btn.dataset.rename);
+      const label = prompt('Name this device', current ? current.label : '');
+      if (!label) return;
+      try {
+        await api('passkey.rename', { credentialId: btn.dataset.rename, label });
+        await refresh();
+      } catch (e) { message($('#app-msg'), e.message); }
+    };
+  });
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function fmtDate(iso) {
+  if (!iso) return '–';
+  const d = new Date(iso);
+  return isNaN(d) ? '–' : d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+/* --------------------------------------------------------------- admin -- */
+async function loadAdmin() {
+  const [{ users }, { stats }] = await Promise.all([
+    api('admin.users'), api('admin.stats')
+  ]);
+
+  $('#admin-stats').innerHTML = [
+    ['Users', stats.users], ['Active', stats.activeUsers], ['Disabled', stats.disabledUsers],
+    ['Enrolled passkeys', stats.passkeys], ['Users with a passkey', stats.usersWithPasskey],
+    ['Live sessions', stats.activeSessions]
+  ].map(([label, value]) => `
+    <div class="card panel">
+      <div class="stat-label">${label}</div><div class="stat">${value}</div>
+    </div>`).join('');
+
+  $('#admin-users').innerHTML = users.map(u => `
+    <tr>
+      <td>
+        <strong>${escapeHtml(u.name || u.email)}</strong>
+        <div class="muted mono">${escapeHtml(u.email)}</div>
+      </td>
+      <td><span class="pill ${u.role === 'admin' ? 'accent' : ''}">${u.role}</span></td>
+      <td><span class="pill ${u.status === 'active' ? 'ok' : 'err'}">${u.status}</span></td>
+      <td>
+        ${u.passkeyCount}
+        ${u.credentials.length ? `<div class="muted" style="font-size:12px">${
+          u.credentials.map(c => escapeHtml(c.label)).join('<br>')}</div>` : ''}
+      </td>
+      <td class="muted" style="font-size:13px">
+        ${fmtDate(u.lastLoginAt)}${u.lastLoginMethod ? '<br><span class="pill">' + u.lastLoginMethod + '</span>' : ''}
+      </td>
+      <td>
+        <div class="row" style="flex-wrap:nowrap">
+          <button class="small" data-status="${u.id}" data-to="${u.status === 'active' ? 'disabled' : 'active'}">
+            ${u.status === 'active' ? 'Disable' : 'Enable'}
+          </button>
+          <button class="small" data-revoke="${u.id}">Sign out</button>
+        </div>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="6" class="empty">No users yet.</td></tr>';
+
+  $('#admin-users').querySelectorAll('[data-status]').forEach(b => {
+    b.onclick = async () => {
+      busy(b, true, '…');
+      try { await api('admin.setStatus', { userId: b.dataset.status, status: b.dataset.to }); await loadAdmin(); }
+      catch (e) { message($('#app-msg'), e.message); busy(b, false); }
+    };
+  });
+  $('#admin-users').querySelectorAll('[data-revoke]').forEach(b => {
+    b.onclick = async () => {
+      busy(b, true, '…');
+      try { await api('admin.revokeSessions', { userId: b.dataset.revoke }); await loadAdmin(); }
+      catch (e) { message($('#app-msg'), e.message); busy(b, false); }
+    };
+  });
+
+  await loadAudit();
+}
+
+async function loadAudit() {
+  const { entries } = await api('admin.audit', { limit: 150 });
+  $('#admin-audit').innerHTML = entries.map(e => `
+    <tr>
+      <td class="muted mono" style="white-space:nowrap">${fmtDate(e.at)}</td>
+      <td>${escapeHtml(e.email || '–')}</td>
+      <td><span class="pill">${escapeHtml(e.event)}</span></td>
+      <td class="muted mono">${escapeHtml(String(e.detail || '').slice(0, 120))}</td>
+    </tr>`).join('') || '<tr><td colspan="4" class="empty">Nothing logged yet.</td></tr>';
+}
+
+/* ---------------------------------------------------------------- flow -- */
+async function refresh() {
+  const data = await api('auth.me');
+  renderUser(data);
+  return data;
+}
+
+async function afterSignIn(result) {
+  state.token = result.token;
+  localStorage.setItem(TOKEN_KEY, result.token);
+  clearMessage($('#auth-msg'));
+  showApp();
+  await refresh();
+  if (!state.credentials.length) {
+    message($('#app-msg'),
+      'Add your fingerprint below so next time you can sign in with a touch.', 'warn');
+  }
+}
+
+function signOutLocal() {
+  state = { token: null, user: null, credentials: [] };
+  localStorage.removeItem(TOKEN_KEY);
+  $('#pane-admin').classList.add('hidden');
+  $('#pane-dash').classList.remove('hidden');
+  $('#btn-admin-toggle').textContent = 'Admin';
+  $('#si-pass').value = '';
+  showSignInTab();
+  showAuth();
+}
+
+/* ------------------------------------------------------------- wiring --- */
+function showSignInTab() {
+  $('#tab-signin').setAttribute('aria-selected', 'true');
+  $('#tab-signup').setAttribute('aria-selected', 'false');
+  $('#form-signin').classList.remove('hidden');
+  $('#form-signup').classList.add('hidden');
+  $('#auth-title').textContent = 'Sign in';
+  $('#auth-sub').textContent = 'Use your fingerprint, or your email and password.';
+  clearMessage($('#auth-msg'));
+}
+$('#tab-signin').onclick = showSignInTab;
+
+$('#tab-signup').onclick = () => {
+  $('#tab-signup').setAttribute('aria-selected', 'true');
+  $('#tab-signin').setAttribute('aria-selected', 'false');
+  $('#form-signup').classList.remove('hidden');
+  $('#form-signin').classList.add('hidden');
+  $('#auth-title').textContent = 'Create your account';
+  $('#auth-sub').textContent = 'Set a password first — you can add your fingerprint straight after.';
+  clearMessage($('#auth-msg'));
+};
+
+$('#btn-passkey').onclick = async () => {
+  const btn = $('#btn-passkey');
+  clearMessage($('#auth-msg'));
+  busy(btn, true, 'Waiting for fingerprint…');
+  try {
+    const email = $('#si-email').value.trim();
+    const result = await signInWithFingerprint(email);
+    await afterSignIn(result);
+  } catch (e) {
+    message($('#auth-msg'), e.name ? friendlyWebAuthnError(e) : e.message);
+  } finally { busy(btn, false); }
+};
+
+$('#form-signin').onsubmit = async ev => {
+  ev.preventDefault();
+  const btn = $('#btn-signin');
+  clearMessage($('#auth-msg'));
+  busy(btn, true, 'Signing in…');
+  try {
+    const result = await api('auth.login', {
+      token: '',
+      email: $('#si-email').value.trim(),
+      password: $('#si-pass').value
+    });
+    $('#si-pass').value = '';
+    await afterSignIn(result);
+  } catch (e) { message($('#auth-msg'), e.message); }
+  finally { busy(btn, false); }
+};
+
+$('#form-signup').onsubmit = async ev => {
+  ev.preventDefault();
+  const btn = $('#btn-signup');
+  clearMessage($('#auth-msg'));
+  busy(btn, true, 'Creating…');
+  try {
+    const result = await api('auth.signup', {
+      token: '',
+      name: $('#su-name').value.trim(),
+      email: $('#su-email').value.trim(),
+      password: $('#su-pass').value
+    });
+    $('#su-pass').value = '';
+    await afterSignIn(result);
+    if (await platformAuthenticatorAvailable()) $('#btn-enroll').click();
+  } catch (e) { message($('#auth-msg'), e.message); }
+  finally { busy(btn, false); }
+};
+
+$('#btn-enroll').onclick = async () => {
+  const btn = $('#btn-enroll');
+  clearMessage($('#app-msg'));
+  if (!(await platformAuthenticatorAvailable())) {
+    message($('#app-msg'),
+      'This device has no fingerprint or face sensor available to the browser. ' +
+      'You can still sign in with your password.', 'warn');
+    return;
+  }
+  busy(btn, true, 'Touch the sensor…');
+  try {
+    await enrolFingerprint();
+    await refresh();
+    message($('#app-msg'), 'Fingerprint enrolled — you can sign in with a touch from now on.', 'ok');
+  } catch (e) {
+    message($('#app-msg'), e.name && e.name.endsWith('Error') ? friendlyWebAuthnError(e) : e.message);
+  } finally { busy(btn, false); }
+};
+
+$('#form-pw').onsubmit = async ev => {
+  ev.preventDefault();
+  clearMessage($('#app-msg'));
+  try {
+    await api('auth.changePassword', {
+      currentPassword: $('#pw-current').value,
+      newPassword: $('#pw-new').value
+    });
+    message($('#app-msg'), 'Password updated. Sign in again with the new one.', 'ok');
+    setTimeout(signOutLocal, 1500);
+  } catch (e) { message($('#app-msg'), e.message); }
+};
+
+$('#btn-logout').onclick = async () => {
+  try { await api('auth.logout'); } catch (e) { /* sign out locally regardless */ }
+  signOutLocal();
+};
+
+$('#btn-admin-toggle').onclick = async () => {
+  const showing = !$('#pane-admin').classList.contains('hidden');
+  if (showing) {
+    $('#pane-admin').classList.add('hidden');
+    $('#pane-dash').classList.remove('hidden');
+    $('#btn-admin-toggle').textContent = 'Admin';
+    return;
+  }
+  $('#btn-admin-toggle').textContent = 'Dashboard';
+  $('#pane-dash').classList.add('hidden');
+  $('#pane-admin').classList.remove('hidden');
+  try { await loadAdmin(); } catch (e) { message($('#app-msg'), e.message); }
+};
+
+$('#btn-refresh-audit').onclick = async () => {
+  try { await loadAudit(); } catch (e) { message($('#app-msg'), e.message); }
+};
+
+/* ---------------------------------------------------------------- boot -- */
+(async function boot() {
+  if (!window.PublicKeyCredential) {
+    $('#btn-passkey').disabled = true;
+    message($('#auth-msg'),
+      'This browser does not support passkeys. Use your email and password.', 'warn');
+  } else if (!(await platformAuthenticatorAvailable())) {
+    message($('#auth-msg'),
+      'No fingerprint or face sensor detected on this device — you can still ' +
+      'use a passkey from your phone, or sign in with a password.', 'warn');
+  }
+
+  if (state.token) {
+    try {
+      showApp();
+      await refresh();
+    } catch (e) { signOutLocal(); }
+  } else {
+    showAuth();
+  }
+
+  // Conditional UI: offer the passkey silently in the email field's autofill.
+  try {
+    if (window.PublicKeyCredential &&
+        PublicKeyCredential.isConditionalMediationAvailable &&
+        await PublicKeyCredential.isConditionalMediationAvailable() &&
+        !state.token) {
+      const result = await signInWithFingerprint('', 'conditional');
+      await afterSignIn(result);
+    }
+  } catch (e) { /* the user ignored the autofill prompt — nothing to do */ }
+})();
+</script>
+</body>
+</html>
