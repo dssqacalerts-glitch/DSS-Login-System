@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cafeteria — Discovery Samal</title>
+<meta name="theme-color" content="#0c1114">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  /* A screen read from across a room: dark, few colours, very large type, and
+     nothing that needs touching. One colour per outcome, and no money anywhere
+     — spend belongs in the console, not on a wall the whole shift walks past. */
+  :root {
+    --bg: #0c1114;
+    --panel: #141c21;
+    --panel-2: #1b262c;
+    --line: #26343c;
+    --text: #eef5f8;
+    --text-2: #b3c4cd;
+    --muted: #7d94a0;
+
+    --served: #0ca30c;
+    --served-wash: #0e2a12;
+    --second: #fab219;
+    --second-wash: #2c2410;
+    --refused: #d03b3b;
+    --refused-wash: #2c1516;
+
+    --series-1: #3987e5;
+    --series-2: #d95926;
+
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); overflow: hidden;
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+             env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .screen { height: 100dvh; display: flex; flex-direction: column; padding: 1.4vmin 1.6vmin; gap: 1.2vmin; }
+
+  header {
+    display: flex; align-items: baseline; gap: 1.6vmin; flex: 0 0 auto;
+    padding: 0 .6vmin;
+  }
+  .site { font-size: clamp(15px, 1.9vmin, 26px); font-weight: 700; letter-spacing: -.01em; }
+  .site span { color: var(--muted); font-weight: 500; }
+  .spacer { flex: 1 1 auto; }
+  .chip {
+    font-size: clamp(11px, 1.4vmin, 18px); font-weight: 600; padding: .5vmin 1.2vmin;
+    border-radius: 999px; background: var(--panel-2); color: var(--text-2); white-space: nowrap;
+  }
+  .chip.live { color: var(--served); }
+  .chip.stale { background: var(--refused-wash); color: var(--refused); }
+  .clock { font-size: clamp(18px, 2.6vmin, 40px); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  main { flex: 1 1 auto; display: grid; gap: 1.2vmin; grid-template-columns: 1.55fr 1fr; min-height: 0; }
+  @media (max-aspect-ratio: 1/1) { main { grid-template-columns: 1fr; grid-template-rows: 1.3fr 1fr; } }
+
+  .col { display: grid; gap: 1.2vmin; min-height: 0; }
+  .col.left { grid-template-rows: minmax(0, 1.15fr) minmax(0, 1fr); }
+  .col.right { grid-template-rows: auto auto minmax(0, 1fr); }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 2vmin 2.2vmin; min-height: 0; display: flex; flex-direction: column;
+  }
+  .card h2 {
+    margin: 0 0 1.2vmin; font-size: clamp(11px, 1.5vmin, 19px); font-weight: 700;
+    letter-spacing: .16em; text-transform: uppercase; color: var(--muted);
+  }
+
+  /* ---- now serving ---- */
+  .now { justify-content: center; transition: background .25s ease, border-color .25s ease; }
+  .now.served { background: var(--served-wash); border-color: var(--served); }
+  .now.second { background: var(--second-wash); border-color: var(--second); }
+  .now.refused { background: var(--refused-wash); border-color: var(--refused); }
+  .verdict {
+    font-size: clamp(13px, 1.9vmin, 24px); font-weight: 800; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .now.served .verdict { color: var(--served); }
+  .now.second .verdict { color: var(--second); }
+  .now.refused .verdict { color: var(--refused); }
+  .who {
+    font-size: clamp(30px, 7.2vmin, 104px); font-weight: 800; letter-spacing: -.025em;
+    line-height: 1.02; margin: .8vmin 0 .4vmin; text-wrap: balance;
+  }
+  .org { font-size: clamp(15px, 2.5vmin, 34px); color: var(--text-2); display: flex;
+         align-items: center; gap: 1.2vmin; flex-wrap: wrap; }
+  .detail { font-size: clamp(14px, 2.1vmin, 28px); color: var(--text-2); margin-top: 1.2vmin; }
+  .reason { font-size: clamp(13px, 1.9vmin, 24px); color: var(--refused); margin-top: .8vmin; }
+
+  .tag {
+    font-size: clamp(10px, 1.35vmin, 17px); font-weight: 700; letter-spacing: .08em;
+    text-transform: uppercase; padding: .4vmin 1.1vmin; border-radius: 6px;
+    background: var(--panel-2); color: var(--text-2);
+  }
+  .tag.employee { background: rgba(57,135,229,.2); color: #79b3f5; }
+  .tag.ojt { background: rgba(12,163,12,.2); color: #63cf63; }
+  .tag.contractor { background: rgba(217,89,38,.2); color: #f0966b; }
+  .tag.method { background: rgba(255,255,255,.09); color: var(--text-2); }
+
+  /* ---- feed ---- */
+  .feed { display: flex; flex-direction: column; gap: 0; overflow: hidden; }
+  .feed .row {
+    display: flex; align-items: center; gap: 1.4vmin; padding: .9vmin 0;
+    border-bottom: 1px solid var(--line); font-size: clamp(13px, 1.85vmin, 24px);
+  }
+  .feed .row:last-child { border-bottom: none; }
+  /* `display: flex` above out-specifies the browser's own [hidden] rule, so a
+     trimmed row would stay on screen. Say it explicitly. */
+  .feed .row[hidden] { display: none; }
+  .feed .t { color: var(--muted); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+  .feed .n { font-weight: 600; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .feed .d { color: var(--muted); flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis;
+             white-space: nowrap; max-width: 32%; }
+  .feed .mark { width: 1.1vmin; height: 1.1vmin; min-width: 8px; min-height: 8px;
+                border-radius: 50%; flex: 0 0 auto; background: var(--served); }
+  .feed .row.no .mark { background: var(--refused); }
+  .feed .row.no .n { color: var(--text-2); }
+
+  /* ---- service + counters ---- */
+  .service .big { font-size: clamp(24px, 4.4vmin, 62px); font-weight: 800; letter-spacing: -.02em; }
+  .service .sub { font-size: clamp(13px, 1.8vmin, 23px); color: var(--text-2); margin-top: .4vmin; }
+  .service.closed .big { color: var(--muted); }
+
+  .counters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2vmin; }
+  .counter { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+             padding: 1.6vmin 1.8vmin; }
+  .counter .v { font-size: clamp(26px, 5vmin, 70px); font-weight: 800; letter-spacing: -.03em; line-height: 1; }
+  .counter .k { font-size: clamp(10px, 1.35vmin, 17px); font-weight: 700; letter-spacing: .12em;
+                text-transform: uppercase; color: var(--muted); margin-top: .8vmin; }
+  .counter.second .v { color: var(--second); }
+  .counter.refused .v { color: var(--refused); }
+
+  .bars { display: flex; flex-direction: column; gap: .9vmin; }
+  .bar { display: grid; grid-template-columns: 30% 1fr auto; align-items: center; gap: 1.2vmin;
+         font-size: clamp(12px, 1.7vmin, 22px); }
+  .bar .lbl { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar .track { height: 1.6vmin; min-height: 10px; background: var(--panel-2); border-radius: 5px; overflow: hidden; }
+  .bar .fill { height: 100%; background: var(--series-1); border-radius: 5px; }
+  .bar .v { font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
+
+  .spark { display: flex; align-items: flex-end; gap: .5vmin; height: 7vmin; min-height: 42px; margin-top: .6vmin; }
+  .spark i { flex: 1 1 0; background: var(--series-2); border-radius: 3px 3px 0 0; min-height: 2px; display: block; }
+  .spark i.empty { background: var(--panel-2); }
+  .sparkfoot { display: flex; justify-content: space-between; font-size: clamp(10px, 1.3vmin, 16px);
+               color: var(--muted); margin-top: .5vmin; font-variant-numeric: tabular-nums; }
+
+  .scroll { overflow: hidden; }
+  .empty { color: var(--muted); font-size: clamp(13px, 1.8vmin, 23px); padding: 2vmin 0; }
+
+  footer { flex: 0 0 auto; display: flex; gap: 1.6vmin; align-items: center;
+           padding: 0 .8vmin; font-size: clamp(10px, 1.35vmin, 17px); color: var(--muted); }
+
+  .setup { display: grid; place-items: center; height: 100dvh; padding: 6vmin; text-align: center; }
+  .setup div { max-width: 46ch; }
+  .setup h1 { font-size: clamp(22px, 4vmin, 44px); margin: 0 0 2vmin; }
+  .setup p { font-size: clamp(14px, 2vmin, 22px); color: var(--text-2); line-height: 1.6; }
+  .setup code { background: var(--panel-2); padding: .2em .5em; border-radius: 6px; font-size: .92em; }
+  .hidden { display: none !important; }
+  @media (prefers-reduced-motion: reduce) { .now { transition: none; } }
+</style>
+</head>
+<body>
+
+<div id="setup" class="setup hidden">
+  <div>
+    <h1>This screen is not set up yet</h1>
+    <p id="setup-msg"></p>
+  </div>
+</div>
+
+<div id="screen" class="screen hidden">
+  <header>
+    <div class="site" id="site">Discovery Samal <span>· cafeteria</span></div>
+    <div class="spacer"></div>
+    <span class="chip" id="chip-priv"></span>
+    <span class="chip live" id="chip-net">live</span>
+    <span class="clock" id="clock">—</span>
+  </header>
+
+  <main>
+    <div class="col left">
+      <section class="card now" id="now">
+        <div class="verdict" id="verdict">Ready</div>
+        <div class="who" id="who">Waiting for the next scan</div>
+        <div class="org" id="org"></div>
+        <div class="detail" id="detail"></div>
+        <div class="reason" id="reason"></div>
+      </section>
+
+      <section class="card">
+        <h2>Just now</h2>
+        <div class="feed scroll" id="feed"><div class="empty">Nothing served yet today.</div></div>
+      </section>
+    </div>
+
+    <div class="col right">
+      <section class="card service" id="service">
+        <h2 id="service-h2">Now serving</h2>
+        <div class="big" id="service-name">—</div>
+        <div class="sub" id="service-sub"></div>
+      </section>
+
+      <div class="counters">
+        <div class="counter"><div class="v" id="c-served">0</div><div class="k">Served</div></div>
+        <div class="counter second"><div class="v" id="c-second">0</div><div class="k">2nd meals</div></div>
+        <div class="counter refused"><div class="v" id="c-refused">0</div><div class="k">Turned away</div></div>
+      </div>
+
+      <section class="card scroll">
+        <h2>By service</h2>
+        <div class="bars" id="by-period"></div>
+        <h2 style="margin-top:1.8vmin">Busiest departments</h2>
+        <div class="bars" id="by-dept"></div>
+        <h2 style="margin-top:1.8vmin">Last two hours</h2>
+        <div class="spark" id="spark"></div>
+        <div class="sparkfoot"><span id="spark-from">—</span><span id="spark-to">—</span></div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <span id="foot-day">—</span>
+    <span class="spacer"></span>
+    <span id="foot-methods"></span>
+    <span>Press <b>P</b> for privacy mode · <b>F</b> for full screen</span>
+  </footer>
+</div>
+
+<script>
+/* ==========================================================================
+ *  CONFIGURE ME — the /exec URL of your Apps Script deployment.
+ *  The display key goes in this page's own URL:  display.html?key=...
+ * ========================================================================== */
+const API_URL = 'PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE';
+
+const $ = s => document.querySelector(s);
+const KEY = new URLSearchParams(location.search).get('key') || '';
+const PRIV_KEY = 'ds-display.privacy';
+
+let state = {
+  seq: -1,
+  privacy: localStorage.getItem(PRIV_KEY) === '1',
+  lastGood: 0,
+  clearAt: 0,
+  polling: 5000
+};
+
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+/* Every clock on this screen runs on the site's time, not the television's.
+ * `skew` is how far this device is from the server; a TV with the wrong clock
+ * and a TV in the wrong timezone are both common, and either one showing a
+ * time that disagrees with the service window makes the whole screen suspect. */
+let siteZone = null, skew = 0;
+const siteTime = at => {
+  const d = at ? new Date(at) : new Date(Date.now() + skew);
+  try {
+    return d.toLocaleTimeString('en-GB', {
+      hour: '2-digit', minute: '2-digit', hour12: false,
+      timeZone: siteZone || undefined
+    });
+  } catch (e) {
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+};
+const timeOf = iso => siteTime(iso);
+
+/** Privacy mode shortens the surname; the attendant still recognises the person. */
+function nameOf(full) {
+  const n = String(full || '');
+  if (!state.privacy) return n;
+  const parts = n.trim().split(/\s+/);
+  if (parts.length < 2) return n;
+  return parts[0] + ' ' + parts[parts.length - 1][0] + '.';
+}
+
+const METHOD_LABEL = { qr: 'QR badge', phone: 'Phone', card: 'Card', manual: 'By name', correction: 'Correction' };
+
+async function api(action, params = {}) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(Object.assign({ action, displayKey: KEY }, params)),
+    redirect: 'follow'
+  });
+  const text = await res.text();
+  let json;
+  try { json = JSON.parse(text); }
+  catch (e) { throw new Error('The server did not return JSON.'); }
+  if (!json.ok) { const err = new Error(json.error || 'Request failed.'); err.status = json.status; throw err; }
+  return json;
+}
+
+/* ------------------------------------------------------------- painting -- */
+function paintNow(last) {
+  const box = $('#now');
+  if (!last) {
+    box.className = 'card now';
+    $('#verdict').textContent = 'Ready';
+    $('#who').textContent = 'Waiting for the next scan';
+    $('#org').innerHTML = '';
+    $('#detail').textContent = '';
+    $('#reason').textContent = '';
+    return;
+  }
+
+  const served = last.served;
+  const second = served && last.nth >= 2;
+  box.className = 'card now ' + (!served ? 'refused' : second ? 'second' : 'served');
+
+  $('#verdict').textContent = !served ? 'Not served'
+    : second ? 'Second meal' : 'Served';
+  $('#who').textContent = nameOf(last.fullName);
+  $('#org').innerHTML =
+    `<span class="tag ${esc(last.personType)}">${esc(last.personType)}</span>` +
+    `<span>${esc(last.org || '')}</span>` +
+    `<span class="tag method">${esc(METHOD_LABEL[last.method] || last.method)}</span>`;
+
+  if (served) {
+    const which = last.nth >= 2 ? '2nd meal of this duty' : '1st meal of this duty';
+    $('#detail').textContent = (last.mealPeriod ? cap(last.mealPeriod) + ' · ' : '') + which +
+      ' · ' + timeOf(last.at);
+    $('#reason').textContent = '';
+  } else {
+    $('#detail').textContent = timeOf(last.at);
+    // The reason is shown briefly and then cleared: the attendant needs it,
+    // the rest of the queue does not need it lingering on a wall.
+    $('#reason').textContent = last.reason || '';
+    state.clearAt = Date.now() + 9000;
+  }
+}
+
+const cap = s => String(s || '').charAt(0).toUpperCase() + String(s || '').slice(1);
+
+function paintFeed(rows) {
+  const host = $('#feed');
+  if (!rows.length) { host.innerHTML = '<div class="empty">Nothing served yet today.</div>'; return; }
+  host.innerHTML = rows.slice(0, 8).map(r => `
+    <div class="row ${r.served ? '' : 'no'}">
+      <span class="mark"></span>
+      <span class="t">${timeOf(r.at)}</span>
+      <span class="n">${esc(nameOf(r.fullName))}</span>
+      <span class="d">${esc(r.org || '')}</span>
+      <span class="tag method">${esc(METHOD_LABEL[r.method] || r.method)}</span>
+    </div>`).join('');
+  trimFeed();
+}
+
+/**
+ * Drop any row that does not fit whole. A screen read from across a room should
+ * never show the top half of somebody's name — a short list looks deliberate,
+ * a sliced one looks broken.
+ */
+function trimFeed() {
+  const host = $('#feed');
+  const limit = host.clientHeight;
+  if (!limit) return;
+  const rows = Array.from(host.querySelectorAll('.row'));
+  const top = host.getBoundingClientRect().top;
+  rows.forEach(row => {
+    const r = row.getBoundingClientRect();
+    row.hidden = (r.bottom - top) > limit + 1;
+  });
+}
+
+// The rows are sized in vmin, so a resized or rotated screen has to re-measure.
+window.addEventListener('resize', trimFeed);
+
+function bars(host, rows, colour) {
+  const max = Math.max(1, ...rows.map(r => r.meals));
+  host.innerHTML = rows.length ? rows.map(r => `
+    <div class="bar">
+      <span class="lbl">${esc(r.label || r.name)}</span>
+      <span class="track"><i class="fill" style="width:${Math.round(r.meals / max * 100)}%;
+        ${colour ? 'background:' + colour : ''}"></i></span>
+      <span class="v">${r.meals}</span>
+    </div>`).join('') : '<div class="empty">—</div>';
+}
+
+function paintSpark(points) {
+  const max = Math.max(1, ...points.map(p => p.meals));
+  $('#spark').innerHTML = points.map(p => {
+    const h = p.meals ? Math.max(6, Math.round(p.meals / max * 100)) : 2;
+    return `<i class="${p.meals ? '' : 'empty'}" style="height:${h}%"></i>`;
+  }).join('');
+  $('#spark-from').textContent = points.length ? points[0].at : '';
+  $('#spark-to').textContent = points.length ? points[points.length - 1].at : '';
+}
+
+function paint(feed) {
+  $('#site').innerHTML = esc(feed.site) + ' <span>· cafeteria</span>';
+  $('#foot-day').textContent = feed.day;
+
+  if (feed.service) {
+    $('#service').className = 'card service';
+    $('#service-h2').textContent = 'Now serving';
+    $('#service-name').textContent = feed.service.label;
+    $('#service-sub').textContent =
+      feed.service.startTime + '–' + feed.service.endTime +
+      ' · closes in ' + feed.service.closesIn + ' min';
+    state.polling = 5000;
+  } else {
+    $('#service').className = 'card service closed';
+    $('#service-h2').textContent = 'Between services';
+    $('#service-name').textContent = feed.nextService ? feed.nextService.label : 'Closed';
+    $('#service-sub').textContent = feed.nextService
+      ? 'opens at ' + feed.nextService.startTime + ', in ' + feed.nextService.startsIn + ' min'
+      : 'No service scheduled.';
+    state.polling = 30000;
+  }
+
+  $('#c-served').textContent = feed.totals.served;
+  $('#c-second').textContent = feed.totals.secondMeals;
+  $('#c-refused').textContent = feed.totals.refused;
+
+  bars($('#by-period'), feed.byPeriod);
+  bars($('#by-dept'), feed.byDepartment.map(d => ({ label: d.name, meals: d.meals })),
+    'var(--series-2)');
+  paintSpark(feed.throughput);
+
+  const methods = Object.keys(feed.byMethod || {});
+  $('#foot-methods').textContent = methods.length
+    ? methods.map(m => (METHOD_LABEL[m] || m) + ' ' + feed.byMethod[m]).join(' · ')
+    : '';
+
+  paintFeed(feed.recent || []);
+  paintNow(feed.last);
+}
+
+function paintNet(ok) {
+  const chip = $('#chip-net');
+  const stale = Date.now() - state.lastGood;
+  if (ok) { chip.className = 'chip live'; chip.textContent = 'live'; return; }
+  chip.className = 'chip stale';
+  chip.textContent = stale > 120000
+    ? 'no connection for ' + Math.round(stale / 60000) + ' min'
+    : 'reconnecting…';
+}
+
+function paintPrivacy() {
+  $('#chip-priv').textContent = state.privacy ? 'privacy on' : '';
+  $('#chip-priv').style.display = state.privacy ? '' : 'none';
+}
+
+/* ---------------------------------------------------------------- polling - */
+let timer = null;
+// The last feed the server sent, kept so the screen can repaint itself without
+// asking again — privacy mode has to take effect the instant it is pressed.
+let lastFeed = null;
+
+async function tick() {
+  try {
+    const feed = await api('display.feed', { seq: state.seq });
+    state.lastGood = Date.now();
+    paintNet(true);
+    if (feed.timezone) siteZone = feed.timezone;
+    if (feed.serverTime) skew = new Date(feed.serverTime).getTime() - Date.now();
+    if (feed.changed) {
+      state.seq = feed.seq;
+      lastFeed = feed;
+      paint(feed);
+    }
+  } catch (e) {
+    paintNet(false);
+    if (e.status === 403 || e.status === 503) {
+      showSetup(e.message);
+      return;                       // stop polling on a key problem
+    }
+  }
+  timer = setTimeout(tick, state.polling);
+}
+
+function showSetup(msg) {
+  clearTimeout(timer);
+  $('#screen').classList.add('hidden');
+  $('#setup').classList.remove('hidden');
+  $('#setup-msg').innerHTML = esc(msg) +
+    '<br><br>Open this page as <code>display.html?key=YOUR_DISPLAY_KEY</code>. ' +
+    'Run <code>generateDisplayKey()</code> in the Apps Script editor once and save ' +
+    'the value as the <code>DISPLAY_KEY</code> script property.';
+}
+
+/* ------------------------------------------------------------- the room -- */
+setInterval(() => {
+  $('#clock').textContent = siteTime();
+  // Clear a lingering refusal reason without waiting for the next scan.
+  if (state.clearAt && Date.now() > state.clearAt) {
+    state.clearAt = 0;
+    $('#reason').textContent = '';
+  }
+  if (Date.now() - state.lastGood > 20000) paintNet(false);
+}, 1000);
+
+document.addEventListener('keydown', ev => {
+  const k = ev.key.toLowerCase();
+  if (k === 'p') {
+    state.privacy = !state.privacy;
+    localStorage.setItem(PRIV_KEY, state.privacy ? '1' : '0');
+    paintPrivacy();
+    // Repaint from what is already in hand. Someone presses P because a name is
+    // on the wall right now — waiting up to five seconds for the next poll to
+    // redact it defeats the purpose, and re-fetching to do it is a request the
+    // quota does not need to spend.
+    if (lastFeed) paint(lastFeed);
+  }
+  if (k === 'f') {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen().catch(() => {});
+  }
+});
+
+/* A wall screen that dims after ten minutes is useless. */
+let wakeLock = null;
+async function keepAwake() {
+  try {
+    if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+  } catch (e) { /* the browser or the OS said no; nothing to do */ }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') { keepAwake(); state.seq = -1; }
+});
+
+/* ------------------------------------------------------------------ boot - */
+(function boot() {
+  paintPrivacy();
+  if (API_URL.startsWith('PASTE_')) {
+    showSetup('The deployment URL has not been set in this file yet.');
+    return;
+  }
+  if (!KEY) {
+    showSetup('No display key in the address.');
+    return;
+  }
+  $('#screen').classList.remove('hidden');
+  keepAwake();
+  tick();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>My Pass</title>
+
+<link rel="manifest" href="pass.webmanifest">
+<meta name="theme-color" content="#0f1216">
+<meta name="application-name" content="My Pass">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="My Pass">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+
+<style>
+  :root {
+    --bg: #0f1216;
+    --panel: #171b21;
+    --panel-2: #1c2128;
+    --line: #2a3038;
+    --text: #e7eaee;
+    --muted: #9aa4b2;
+    --accent: #4c8dff;
+    --accent-ink: #08131f;
+    --ok: #7ee2ae;
+    --ok-bg: #10281d;
+    --warn: #ffd08a;
+    --warn-bg: #2a2113;
+    --err: #ff9d95;
+    --err-bg: #2c1614;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+             env(safe-area-inset-bottom) env(safe-area-inset-left);
+    overscroll-behavior: none;
+  }
+  .wrap { max-width: 440px; margin: 0 auto; padding: 18px 18px 40px; min-height: 100dvh;
+          display: flex; flex-direction: column; gap: 14px; }
+  .hidden { display: none !important; }
+
+  header.site {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .site h1 { font-size: 17px; margin: 0; letter-spacing: -0.01em; }
+  .site .sub { color: var(--muted); font-size: 12.5px; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px;
+  }
+
+  /* ---------------------------------------------------------- the pass -- */
+  .passcard {
+    background: var(--panel);
+    border: 1px solid var(--line); border-radius: 20px; overflow: hidden;
+  }
+  .who { padding: 18px 18px 14px; border-bottom: 1px solid var(--line); }
+  .who .name { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; }
+  .who .meta { color: var(--muted); font-size: 13.5px; margin-top: 3px; }
+  .who .serial {
+    margin-top: 10px; font: 600 14px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 0.08em; color: var(--accent);
+  }
+
+  .qrzone { padding: 20px 18px 18px; text-align: center; position: relative; }
+  .qrbox {
+    width: min(74vw, 300px); aspect-ratio: 1; margin: 0 auto;
+    background: #ffffff; border-radius: 14px; padding: 12px;
+    display: grid; place-items: center;
+  }
+  .qrbox canvas { width: 100%; height: 100%; image-rendering: pixelated; }
+
+  /* the locked state sits on top of a blurred placeholder */
+  .locked .qrbox { filter: blur(9px) saturate(.3); opacity: .5; }
+  .lockover {
+    position: absolute; inset: 0; display: grid; place-items: center; padding: 18px;
+  }
+  .lockover .inner { text-align: center; max-width: 280px; }
+  .lockover .lockicon { font-size: 34px; line-height: 1; }
+  .lockover p { color: var(--muted); font-size: 13.5px; margin: 8px 0 14px; }
+
+  .roll { margin-top: 14px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+  .ring { width: 26px; height: 26px; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 3.5; }
+  .ring .bg { stroke: var(--line); }
+  .ring .fg { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset .95s linear; }
+  .roll .txt { color: var(--muted); font-size: 13px; }
+  .roll.expiring .fg { stroke: var(--warn); }
+  .roll.expiring .txt { color: var(--warn); }
+
+  .code {
+    margin-top: 10px; font: 500 11.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #46505d; word-break: break-all; user-select: all;
+  }
+
+  /* ------------------------------------------------------------- meals -- */
+  .rows { display: grid; gap: 1px; background: var(--line); border-radius: 12px; overflow: hidden; }
+  .row {
+    background: var(--panel-2); padding: 12px 14px;
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  }
+  .row .k { color: var(--muted); font-size: 13.5px; }
+  .row .v { font-weight: 600; font-size: 14.5px; text-align: right; }
+
+  .pill {
+    display: inline-block; padding: 3px 9px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; border: 1px solid transparent;
+  }
+  .pill.ok   { background: var(--ok-bg);   color: var(--ok);   border-color: #1d4634; }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); border-color: #4a3a17; }
+  .pill.err  { background: var(--err-bg);  color: var(--err);  border-color: #4d2521; }
+
+  .meals { display: flex; gap: 8px; margin-top: 4px; }
+  .tick {
+    flex: 1; height: 8px; border-radius: 999px; background: var(--line);
+  }
+  .tick.used { background: var(--ok); }
+
+  .note { color: var(--muted); font-size: 13px; line-height: 1.5; }
+
+  /* ----------------------------------------------------------- buttons -- */
+  button {
+    font: inherit; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--panel-2); color: var(--text); padding: 13px 16px;
+    cursor: pointer; width: 100%; font-weight: 600;
+  }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: .55; cursor: default; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  button.ghost { background: transparent; }
+  button.small { padding: 9px 12px; font-size: 13.5px; font-weight: 500; width: auto; }
+  .btnrow { display: flex; gap: 10px; }
+
+  label { display: block; font-size: 13px; color: var(--muted); margin: 0 0 5px; }
+  input {
+    width: 100%; font: inherit; padding: 12px 13px; border-radius: 12px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--text);
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .field + .field { margin-top: 12px; }
+
+  .msg { display: none; margin-top: 12px; padding: 11px 13px; border-radius: 12px; font-size: 13.5px; }
+  .msg.show { display: block; }
+  .msg.err { background: var(--err-bg); color: var(--err); }
+  .msg.ok  { background: var(--ok-bg);  color: var(--ok); }
+  .msg.warn { background: var(--warn-bg); color: var(--warn); }
+
+  .spin {
+    width: 15px; height: 15px; border-radius: 50%; display: inline-block;
+    border: 2px solid currentColor; border-right-color: transparent;
+    animation: sp .7s linear infinite; vertical-align: -2px; margin-right: 7px;
+  }
+  @keyframes sp { to { transform: rotate(360deg); } }
+
+  footer { margin-top: auto; color: #5c6673; font-size: 12px; text-align: center; }
+  footer a { color: #6f7a88; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="site">
+    <div>
+      <h1 id="sitename">Discovery Samal</h1>
+      <div class="sub">Staff pass</div>
+    </div>
+    <button id="btn-signout" class="small ghost hidden" type="button">Sign out</button>
+  </header>
+
+  <!-- ================================================== sign in ======= -->
+  <section id="view-auth" class="card">
+    <div style="font-size:17px;font-weight:650;margin-bottom:4px">Sign in</div>
+    <div class="note" style="margin-bottom:14px">
+      Use the fingerprint you enrolled on the staff portal. Your pass is tied to
+      your account, so it only works on a phone you have signed in on.
+    </div>
+
+    <button id="btn-fp" class="primary" type="button">Sign in with fingerprint</button>
+
+    <div style="margin:14px 0 10px" class="note">or use your email and password</div>
+
+    <div class="field">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username" inputmode="email" placeholder="you@example.com">
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" placeholder="••••••••••">
+    </div>
+    <div style="margin-top:12px">
+      <button id="btn-login" type="button">Sign in</button>
+    </div>
+
+    <div id="auth-msg" class="msg"></div>
+  </section>
+
+  <!-- ================================================== the pass ====== -->
+  <section id="view-pass" class="hidden" style="display:flex;flex-direction:column;gap:14px">
+
+    <div class="passcard" id="passcard">
+      <div class="who">
+        <div class="name" id="p-name">—</div>
+        <div class="meta" id="p-meta">—</div>
+        <div class="serial" id="p-serial"></div>
+      </div>
+
+      <div class="qrzone locked" id="qrzone">
+        <div class="qrbox"><canvas id="qr" width="360" height="360"></canvas></div>
+
+        <div class="lockover" id="lockover">
+          <div class="inner">
+            <div class="lockicon">🔒</div>
+            <p>Your code is hidden until you confirm it's you.</p>
+            <button id="btn-reveal" class="primary" type="button">Show my code</button>
+          </div>
+        </div>
+
+        <div class="roll" id="roll">
+          <svg class="ring" viewBox="0 0 36 36" aria-hidden="true">
+            <circle class="bg" cx="18" cy="18" r="15.5"></circle>
+            <circle class="fg" id="ring-fg" cx="18" cy="18" r="15.5"
+                    stroke-dasharray="97.4" stroke-dashoffset="0"></circle>
+          </svg>
+          <div class="txt" id="roll-txt">—</div>
+        </div>
+
+        <div class="code" id="p-code"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="rows">
+        <div class="row">
+          <span class="k">Meals today</span>
+          <span class="v" id="m-count">—</span>
+        </div>
+        <div class="row">
+          <span class="k">Duty hours so far</span>
+          <span class="v" id="m-hours">—</span>
+        </div>
+        <div class="row">
+          <span class="k">Cafeteria</span>
+          <span class="v" id="m-status">—</span>
+        </div>
+        <div class="row">
+          <span class="k">Serving now</span>
+          <span class="v" id="m-period">—</span>
+        </div>
+      </div>
+      <div class="meals" id="m-ticks" style="margin-top:12px"></div>
+      <div class="note" id="m-note" style="margin-top:12px"></div>
+    </div>
+
+    <div id="pass-msg" class="msg"></div>
+
+    <div class="btnrow">
+      <button id="btn-refresh" class="ghost" type="button">Refresh</button>
+    </div>
+  </section>
+
+  <footer>
+    Hold the screen up to the scanner at the gate or the counter.<br>
+    A screenshot will not work — the code changes every
+    <span id="f-window">30</span> seconds.
+  </footer>
+</div>
+
+<script src="vendor/qrcode.js"></script>
+<script>
+/* ===================================================================== *
+ * pass.html — the staff-facing phone pass.
+ *
+ * The idea: the phone in a person's pocket is already a better badge than a
+ * printed card. It cannot be lent out without lending the phone and the
+ * fingerprint that unlocks it, and the code it shows is worthless a minute
+ * after it is drawn.
+ *
+ * Three rules the page keeps:
+ *   1. Nothing is shown until the person confirms with their fingerprint (or,
+ *      failing that, re-enters their password). An unlocked phone left on a
+ *      table is not a badge.
+ *   2. The code is redrawn from the server before each window rolls, so the
+ *      thing on screen is always live. A screenshot is a dead code.
+ *   3. The pass re-locks itself after a few minutes on screen. People put
+ *      their phone away; the next person to pick it up starts from locked.
+ * ===================================================================== */
+
+/* Paste the /exec URL of your Apps Script deployment here. */
+const API_URL = 'PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE';
+
+const TOKEN_KEY = 'ds_portal_token';     // shared with index.html on purpose
+const RELOCK_MS = 4 * 60 * 1000;         // how long the code stays visible
+
+const $ = s => document.querySelector(s);
+
+let state = {
+  token: localStorage.getItem(TOKEN_KEY) || null,
+  data: null,
+  unlocked: false,
+  unlockedAt: 0,
+  rollTimer: null,
+  tickTimer: null,
+  relockTimer: null,
+  rollsAt: 0
+};
+
+/* ------------------------------------------------------------------ api - */
+async function api(action, params = {}) {
+  if (API_URL.startsWith('PASTE_')) {
+    throw new Error('Set API_URL at the top of pass.html.');
+  }
+  const body = Object.assign({ action, userAgent: navigator.userAgent }, params);
+  if (state.token && !('token' in params)) body.token = state.token;
+
+  let res;
+  try {
+    res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body),
+      redirect: 'follow'
+    });
+  } catch (e) {
+    throw new Error('No connection. Your pass needs a moment of signal to refresh.');
+  }
+  const text = await res.text();
+  let json;
+  try { json = JSON.parse(text); }
+  catch (e) { throw new Error('The server did not return JSON. Check the API URL.'); }
+  if (!json.ok) {
+    const err = new Error(json.error || 'Request failed.');
+    err.status = json.status;
+    throw err;
+  }
+  return json;
+}
+
+const b64uToBuf = s => {
+  const pad = '='.repeat((4 - s.length % 4) % 4);
+  const bin = atob((s + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return buf;
+};
+const bufToB64u = buf => {
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+
+const esc = s => String(s === null || s === undefined ? '' : s)
+  .replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function message(el, text, kind = 'err') {
+  el.textContent = text;
+  el.className = 'msg show ' + kind;
+  if (kind === 'ok') setTimeout(() => { if (el.textContent === text) el.className = 'msg'; }, 4000);
+}
+function busy(btn, on, label) {
+  if (on) {
+    btn.dataset.label = btn.innerHTML;
+    btn.innerHTML = '<span class="spin"></span>' + (label || 'Working…');
+    btn.disabled = true;
+  } else {
+    if (btn.dataset.label) btn.innerHTML = btn.dataset.label;
+    btn.disabled = false;
+  }
+}
+
+/* --------------------------------------------------------- sign in ----- */
+async function signInWithFingerprint(email) {
+  const { options } = await api('passkey.loginBegin', { email: email || '', token: '' });
+  const publicKey = {
+    challenge: b64uToBuf(options.challenge),
+    rpId: options.rpId,
+    timeout: options.timeout,
+    userVerification: options.userVerification,
+    allowCredentials: (options.allowCredentials || []).map(c => ({
+      type: c.type, id: b64uToBuf(c.id), transports: c.transports
+    }))
+  };
+  const assertion = await navigator.credentials.get({ publicKey });
+  if (!assertion) throw new Error('No assertion returned.');
+  const r = assertion.response;
+  return api('passkey.loginFinish', {
+    token: '',
+    assertion: {
+      id: assertion.id,
+      rawId: bufToB64u(assertion.rawId),
+      type: assertion.type,
+      response: {
+        clientDataJSON: bufToB64u(r.clientDataJSON),
+        authenticatorData: bufToB64u(r.authenticatorData),
+        signature: bufToB64u(r.signature),
+        userHandle: r.userHandle ? bufToB64u(r.userHandle) : null
+      }
+    }
+  });
+}
+
+function keepToken(result) {
+  state.token = result.token;
+  localStorage.setItem(TOKEN_KEY, result.token);
+}
+
+$('#btn-fp').addEventListener('click', async () => {
+  const btn = $('#btn-fp');
+  busy(btn, true, 'Waiting for your fingerprint…');
+  try {
+    const r = await signInWithFingerprint($('#email').value.trim());
+    keepToken(r);
+    await load();
+  } catch (e) {
+    message($('#auth-msg'),
+      e.name === 'NotAllowedError'
+        ? 'Cancelled, or this phone has no passkey for your account yet. Enrol it on the staff portal first.'
+        : e.message);
+  } finally { busy(btn, false); }
+});
+
+$('#btn-login').addEventListener('click', async () => {
+  const btn = $('#btn-login');
+  const email = $('#email').value.trim();
+  const password = $('#password').value;
+  if (!email || !password) { message($('#auth-msg'), 'Email and password, please.'); return; }
+  busy(btn, true, 'Signing in…');
+  try {
+    const r = await api('auth.login', { email, password, token: '' });
+    keepToken(r);
+    $('#password').value = '';
+    await load();
+  } catch (e) {
+    message($('#auth-msg'), e.message);
+  } finally { busy(btn, false); }
+});
+
+$('#password').addEventListener('keydown', e => { if (e.key === 'Enter') $('#btn-login').click(); });
+
+$('#btn-signout').addEventListener('click', async () => {
+  try { await api('auth.logout'); } catch (e) { /* the local token goes either way */ }
+  localStorage.removeItem(TOKEN_KEY);
+  state.token = null; state.data = null;
+  lock();
+  showAuth();
+});
+
+/* ------------------------------------------------------------ the pass - */
+function showAuth() {
+  $('#view-auth').classList.remove('hidden');
+  $('#view-pass').classList.add('hidden');
+  $('#btn-signout').classList.add('hidden');
+  stopTimers();
+}
+function showPass() {
+  $('#view-auth').classList.add('hidden');
+  $('#view-pass').classList.remove('hidden');
+  $('#btn-signout').classList.remove('hidden');
+}
+
+function stopTimers() {
+  clearTimeout(state.rollTimer); state.rollTimer = null;
+  clearInterval(state.tickTimer); state.tickTimer = null;
+  clearTimeout(state.relockTimer); state.relockTimer = null;
+}
+
+function lock() {
+  state.unlocked = false;
+  stopTimers();
+  $('#qrzone').classList.add('locked');
+  $('#lockover').classList.remove('hidden');
+  $('#roll-txt').textContent = 'Hidden';
+  $('#p-code').textContent = '';
+  $('#ring-fg').setAttribute('stroke-dashoffset', '0');
+}
+
+async function unlock() {
+  const btn = $('#btn-reveal');
+  busy(btn, true, 'Confirming…');
+  try {
+    // Re-confirm with the fingerprint. This is the whole point of the phone
+    // pass: possession of the phone is not enough, the person has to be there.
+    try {
+      // Whoever's finger this is gets *their* pass — if a colleague confirms on
+      // a borrowed phone, the page becomes theirs rather than leaking this one.
+      const r = await signInWithFingerprint('');
+      keepToken(r);
+    } catch (e) {
+      if (e.name === 'NotAllowedError') throw new Error('Cancelled.');
+      // No passkey on this device, or WebAuthn unavailable: fall back to the
+      // live session they already hold. Better a shown code than a member of
+      // staff stuck at the counter with a phone that will not cooperate.
+    }
+
+    state.unlocked = true;
+    state.unlockedAt = Date.now();
+    $('#qrzone').classList.remove('locked');
+    $('#lockover').classList.add('hidden');
+    await refreshCode();
+    state.relockTimer = setTimeout(lock, RELOCK_MS);
+  } catch (e) {
+    message($('#pass-msg'), e.message);
+  } finally { busy(btn, false); }
+}
+
+$('#btn-reveal').addEventListener('click', unlock);
+$('#btn-refresh').addEventListener('click', async () => {
+  const btn = $('#btn-refresh');
+  busy(btn, true, 'Refreshing…');
+  try { await load(); if (state.unlocked) await refreshCode(); }
+  catch (e) { message($('#pass-msg'), e.message); }
+  finally { busy(btn, false); }
+});
+
+/** Pull a fresh code and schedule the next pull just before this one dies. */
+async function refreshCode() {
+  if (!state.unlocked) return;
+  let d;
+  try {
+    d = await api('pass.mine');
+  } catch (e) {
+    message($('#pass-msg'), e.message);
+    // Try again shortly — a tunnel or a lift is not a reason to lock out.
+    state.rollTimer = setTimeout(refreshCode, 5000);
+    return;
+  }
+  state.data = d;
+  paintPerson(d);
+  paintMeals(d);
+
+  drawQr(d.code);
+  $('#p-code').textContent = d.code;
+  $('#f-window').textContent = d.windowSeconds;
+
+  state.rollsAt = Date.now() + d.rollsInMs;
+  clearTimeout(state.rollTimer);
+  // Fetch the next code a beat before this one expires, so the picture on
+  // screen is never the stale one.
+  state.rollTimer = setTimeout(refreshCode, Math.max(1200, d.rollsInMs - 400));
+
+  clearInterval(state.tickTimer);
+  state.tickTimer = setInterval(paintRoll, 250);
+  paintRoll();
+}
+
+function paintRoll() {
+  const total = (state.data && state.data.windowSeconds ? state.data.windowSeconds : 30) * 1000;
+  const left = Math.max(0, state.rollsAt - Date.now());
+  const frac = Math.max(0, Math.min(1, left / total));
+  const circ = 2 * Math.PI * 15.5;
+  $('#ring-fg').setAttribute('stroke-dasharray', circ.toFixed(1));
+  $('#ring-fg').setAttribute('stroke-dashoffset', (circ * (1 - frac)).toFixed(1));
+  const secs = Math.ceil(left / 1000);
+  $('#roll-txt').textContent = secs <= 1 ? 'New code…' : ('New code in ' + secs + ' s');
+  $('#roll').classList.toggle('expiring', frac < 0.25);
+}
+
+function drawQr(text) {
+  const cv = $('#qr');
+  const qr = qrcode(0, 'M');
+  qr.addData(text);
+  qr.make();
+  const count = qr.getModuleCount();
+  // A quiet zone of four modules is part of the spec; scanners at the counter
+  // are much happier with it than without.
+  const scale = Math.floor(cv.width / (count + 8));
+  const size = count * scale;
+  const offset = Math.floor((cv.width - size) / 2);
+  const cx = cv.getContext('2d');
+  cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, cv.width, cv.height);
+  cx.fillStyle = '#000000';
+  for (let r = 0; r < count; r++) {
+    for (let c = 0; c < count; c++) {
+      if (qr.isDark(r, c)) cx.fillRect(offset + c * scale, offset + r * scale, scale, scale);
+    }
+  }
+}
+
+function paintPerson(d) {
+  const p = d.person || {};
+  $('#p-name').textContent = p.fullName || '—';
+  $('#p-meta').textContent = [p.typeLabel, p.org].filter(Boolean).join(' · ');
+  $('#p-serial').textContent = p.badgeSerial || '';
+}
+
+function paintMeals(d) {
+  const p = d.person || {};
+  const ent = d.entitlement || {};
+  const allowance = ent.allowance || 0;
+  const taken = d.takenToday || 0;
+
+  $('#m-count').textContent = allowance
+    ? (taken + ' of ' + allowance + (allowance > 1 ? ' meals' : ' meal'))
+    : '—';
+
+  $('#m-hours').textContent = (ent.hoursToday === null || ent.hoursToday === undefined)
+    ? 'Not counted for you'
+    : (ent.hoursToday + ' h');
+
+  let status = '<span class="pill err">Not approved</span>';
+  if (!p.mealEligible) status = '<span class="pill">Not required</span>';
+  else if (p.mealStatus === 'approved') status = '<span class="pill ok">Approved</span>';
+  else if (p.mealStatus === 'pending') status = '<span class="pill warn">Waiting for your head</span>';
+  else if (p.mealStatus === 'not_required') status = '<span class="pill">Not required</span>';
+  $('#m-status').innerHTML = status;
+
+  $('#m-period').textContent = d.currentPeriod
+    ? (d.currentPeriod.label + ' · until ' + d.currentPeriod.endTime)
+    : 'Between services';
+
+  const ticks = [];
+  for (let i = 0; i < Math.max(1, allowance); i++) {
+    ticks.push('<div class="tick' + (i < taken ? ' used' : '') + '"></div>');
+  }
+  $('#m-ticks').innerHTML = ticks.join('');
+
+  let note = '';
+  if (!p.mealEligible) {
+    note = 'Your record is not set up for cafeteria meals.';
+  } else if (p.mealStatus === 'pending') {
+    note = 'Your department head has been emailed. Until they approve, the counter ' +
+           'will turn you away.';
+  } else if (ent.dutyHourRule) {
+    note = ent.overtime
+      ? ('You have passed ' + ent.thresholdHours + ' hours on site today, so a second ' +
+         'meal is open to you.')
+      : ('One meal per duty. A second opens once you have been on site ' +
+         ent.thresholdHours + ' hours — the gate log is what counts, so remember to ' +
+         'scan out as well as in.');
+  }
+  if (taken >= allowance && allowance > 0) {
+    note = 'You have taken everything you are entitled to today. ' + note;
+  }
+  $('#m-note').textContent = note;
+}
+
+/* ------------------------------------------------------------- startup - */
+async function load() {
+  if (!state.token) { showAuth(); return; }
+  try {
+    const d = await api('pass.mine');
+    state.data = d;
+    $('#sitename').textContent = d.site || 'Discovery Samal';
+    $('#f-window').textContent = d.windowSeconds;
+    paintPerson(d);
+    paintMeals(d);
+    showPass();
+    lock();
+  } catch (e) {
+    if (e.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
+      state.token = null;
+      showAuth();
+      message($('#auth-msg'), 'Your session has expired. Sign in again.', 'warn');
+      return;
+    }
+    showPass();
+    lock();
+    message($('#pass-msg'), e.message);
+  }
+}
+
+// Coming back to the page after it has been in a pocket: re-lock, and if it
+// was open, refresh so the counter never sees a stale code.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  if (state.unlocked && Date.now() - state.unlockedAt > RELOCK_MS) lock();
+  else if (state.unlocked) refreshCode();
+});
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+
+load();
+</script>
+</body>
+</html>

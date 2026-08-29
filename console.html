@@ -1,0 +1,1377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Operations Console — Discovery Samal</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --panel-2: #f1f3f5;
+    --line: #e2e6ea;
+    --line-soft: #eef1f4;
+    --text: #14181d;
+    --text-2: #48525c;
+    --muted: #6b7783;
+    --accent: #1f6feb;
+    --accent-ink: #ffffff;
+    --good: #0ca30c;
+    --warning: #fab219;
+    --critical: #d03b3b;
+    --critical-bg: #fbeae9;
+    --good-bg: #e7f5e7;
+    --warning-bg: #fdf3e0;
+
+    /* chart roles — validated against the panel surface, see README */
+    --surface-1: #ffffff;
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --grid: #e7ebef;
+
+    --radius: 12px;
+    --shadow: 0 1px 2px rgba(20,24,29,.05), 0 8px 24px rgba(20,24,29,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1216; --panel: #171b21; --panel-2: #1d232a; --line: #2a3138;
+      --line-soft: #212830; --text: #e8edf2; --text-2: #b3bec8; --muted: #8b98a4;
+      --accent: #4c8dff; --accent-ink: #08131f;
+      --good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
+      --critical-bg: #2c1616; --good-bg: #10240f; --warning-bg: #2a2113;
+      --surface-1: #171b21; --series-1: #3987e5; --series-2: #d95926;
+      --grid: #262d35;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+             env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  button, input, select { font: inherit; color: inherit; }
+  button {
+    cursor: pointer; border-radius: 9px; border: 1px solid var(--line);
+    background: var(--panel-2); padding: 9px 14px; font-weight: 600; min-height: 40px;
+  }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  button.ghost { background: transparent; }
+  button.small { min-height: 34px; padding: 6px 11px; font-size: 13px; font-weight: 500; }
+  button:disabled { opacity: .55; cursor: default; }
+  input, select {
+    width: 100%; padding: 9px 12px; background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 9px; outline: none; min-height: 40px;
+  }
+  input:focus, select:focus, button:focus-visible {
+    border-color: var(--accent); outline: 2px solid transparent; box-shadow: 0 0 0 3px rgba(31,111,235,.22);
+  }
+  label { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 5px; }
+  a { color: var(--accent); }
+  .hidden { display: none !important; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .grow { flex: 1 1 auto; }
+  .wrap { max-width: 1220px; margin: 0 auto; padding: 20px 20px 80px; }
+
+  header.bar {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 14px 20px; background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  .brand { font-weight: 700; letter-spacing: -.01em; }
+  .brand small { display: block; font-weight: 500; color: var(--muted); font-size: 12px; }
+  nav { display: flex; gap: 4px; background: var(--panel-2); padding: 4px; border-radius: 10px; flex-wrap: wrap; }
+  nav button { border: none; background: transparent; color: var(--muted); min-height: 34px; padding: 7px 13px; font-size: 14px; }
+  nav button[aria-selected=true] { background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .pad { padding: 18px 20px; }
+  .stack { display: grid; gap: 16px; }
+  .cols { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-items: start; }
+
+  h2 { font-size: 16px; margin: 0 0 3px; letter-spacing: -.01em; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+  .section-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+
+  /* stat tiles — proportional figures, no tabular-nums at display size */
+  .tiles { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; box-shadow: var(--shadow); }
+  .tile .label { color: var(--muted); font-size: 12.5px; margin-bottom: 4px; }
+  .tile .value { font-size: 27px; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; }
+  .tile .foot { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+  .tile .foot.up { color: var(--critical); }
+  .tile .foot.down { color: var(--good); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line-soft); }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .scroll { overflow-x: auto; }
+
+  .pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+          background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .pill.employee { background: rgba(42,120,214,.14); color: var(--series-1); border-color: transparent; }
+  .pill.contractor { background: rgba(235,104,52,.15); color: var(--series-2); border-color: transparent; }
+  .pill.guest { background: var(--panel-2); }
+  .pill.bad { background: var(--critical-bg); color: var(--critical); border-color: transparent; }
+  .pill.good { background: var(--good-bg); color: var(--good); border-color: transparent; }
+  .pill.warn { background: var(--warning-bg); color: var(--warning); border-color: transparent; }
+  .pill.ojt { background: rgba(12,163,12,.14); color: var(--good); border-color: transparent; }
+  .pill.visitor { background: var(--panel-2); }
+
+  .empty { color: var(--muted); text-align: center; padding: 26px 0; font-size: 14px; }
+  .msg { padding: 10px 13px; border-radius: 9px; font-size: 14px; margin-bottom: 14px; display: none; }
+  .msg.show { display: block; }
+  .msg.err { background: var(--critical-bg); color: var(--critical); }
+  .msg.ok { background: var(--good-bg); color: var(--good); }
+
+  /* ---- charts ---- */
+  .chartcard { padding: 18px 20px 8px; }
+  .chart { width: 100%; overflow-x: auto; }
+  .chart svg { display: block; width: 100%; height: auto; }
+  .axis text { font-size: 11.5px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+  .gridline { stroke: var(--grid); stroke-width: 1; }
+  .barlabel { font-size: 12px; fill: var(--text-2); font-variant-numeric: tabular-nums; }
+  .catlabel { font-size: 13px; fill: var(--text); }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-2); margin: 2px 0 10px; }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .tip {
+    position: fixed; pointer-events: none; z-index: 50; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow);
+    padding: 8px 11px; font-size: 12.5px; opacity: 0; transition: opacity .1s ease;
+    max-width: 240px;
+  }
+  .tip b { display: block; font-size: 13px; margin-bottom: 2px; }
+  .tip .v { font-variant-numeric: tabular-nums; }
+  @media (prefers-reduced-motion: reduce) { .tip { transition: none; } }
+
+  /* ---- badges (print) ---- */
+  .badgesheet { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+  .badge {
+    border: 1px solid var(--line); border-radius: 10px; padding: 14px;
+    display: flex; gap: 14px; align-items: center; background: var(--panel);
+    break-inside: avoid;
+  }
+  .badge canvas { width: 92px; height: 92px; flex: 0 0 auto; background: #fff; border-radius: 6px; }
+  .badge .bname { font-weight: 700; font-size: 15px; letter-spacing: -.01em; }
+  .badge .bmeta { color: var(--muted); font-size: 12px; }
+  .badge .bserial { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; margin-top: 5px; }
+  @media print {
+    body { background: #fff; color: #000; }
+    header.bar, nav, .noprint { display: none !important; }
+    .badge { border-color: #999; box-shadow: none; }
+    .badgesheet { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .signin { min-height: 100dvh; display: grid; place-items: center; padding: 20px; }
+  .signin .card { width: min(420px, 100%); padding: 26px; }
+  .field { margin-bottom: 12px; }
+  .grid2 { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 620px) { .grid2 { grid-template-columns: 1fr; } }
+  dialog { border: 1px solid var(--line); background: var(--panel); color: var(--text);
+           border-radius: var(--radius); padding: 22px; width: min(620px, 94vw); }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+</style>
+</head>
+<body>
+
+<div id="view-signin" class="signin">
+  <div class="card">
+    <div class="brand" style="margin-bottom:16px">Operations console<small>Discovery Samal</small></div>
+    <div id="signin-msg" class="msg"></div>
+    <button id="btn-passkey" class="primary" style="width:100%;margin-bottom:12px">Sign in with fingerprint</button>
+    <div class="field"><label for="si-email">Email</label><input id="si-email" type="email" autocomplete="username"></div>
+    <div class="field"><label for="si-pass">Password</label><input id="si-pass" type="password" autocomplete="current-password"></div>
+    <button id="btn-signin" style="width:100%">Sign in with password</button>
+  </div>
+</div>
+
+<div id="view-app" class="hidden">
+  <header class="bar">
+    <div class="brand">Operations console<small id="who">—</small></div>
+    <nav id="nav">
+      <button data-tab="onsite" aria-selected="true">On site</button>
+      <button data-tab="approvals">Approvals</button>
+      <button data-tab="meals">Meal cost</button>
+      <button data-tab="gate">Gate traffic</button>
+      <button data-tab="people">People</button>
+      <button data-tab="badges">Badges</button>
+      <button data-tab="settings">Settings</button>
+    </nav>
+    <div class="grow"></div>
+    <button class="small ghost" id="btn-signout">Sign out</button>
+  </header>
+
+  <div class="wrap">
+    <div id="app-msg" class="msg"></div>
+
+    <!-- ============================================== ON SITE ========= -->
+    <section id="tab-onsite" class="stack">
+      <div class="tiles" id="overview-tiles"></div>
+      <div class="card pad">
+        <div class="section-head">
+          <div>
+            <h2>Who is on the property</h2>
+            <p class="sub" id="onsite-sub">—</p>
+          </div>
+          <div class="row">
+            <button class="small" id="btn-refresh-onsite">Refresh</button>
+            <button class="small" id="btn-closeout">Close out everyone</button>
+          </div>
+        </div>
+        <div class="scroll"><table>
+          <thead><tr><th>Name</th><th>Type</th><th>Department / company</th><th>Since</th><th class="num">Hours</th><th>Vehicle</th></tr></thead>
+          <tbody id="onsite-rows"></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- ============================================== APPROVALS ======= -->
+    <section id="tab-approvals" class="stack hidden">
+      <div class="card pad">
+        <div class="section-head">
+          <div>
+            <h2>Waiting on somebody</h2>
+            <p class="sub" id="approvals-sub">—</p>
+          </div>
+          <div class="row">
+            <select id="appr-status" style="width:auto;min-width:150px">
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="declined">Declined</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="expired">Expired</option>
+            </select>
+            <button class="small" id="btn-appr-refresh">Refresh</button>
+          </div>
+        </div>
+        <div class="scroll"><table>
+          <thead><tr>
+            <th>Person</th><th>Needs</th><th>Waiting on</th>
+            <th class="num">Age</th><th>Raised by</th><th></th>
+          </tr></thead>
+          <tbody id="approval-rows"></tbody>
+        </table></div>
+      </div>
+      <div class="card pad">
+        <h2>How approvals reach people</h2>
+        <p class="sub" style="margin:0">
+          Approvers never sign in here. Each gets an email with a link that opens a
+          page showing the request; the decision is recorded only when they press the
+          button on that page — so a mail scanner following the link cannot approve
+          anybody. Links are single-use and expire.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================== MEAL COST ======= -->
+    <section id="tab-meals" class="stack hidden">
+      <div class="card pad noprint">
+        <div class="row">
+          <div style="min-width:180px"><label for="meal-month">Month</label><select id="meal-month"></select></div>
+          <div class="grow"></div>
+          <button class="small" id="btn-meal-csv">Download CSV</button>
+        </div>
+      </div>
+
+      <div class="tiles" id="meal-tiles"></div>
+
+      <div class="card chartcard">
+        <div class="section-head">
+          <div><h2>Cost per day</h2><p class="sub">Every meal valued at its period's unit cost.</p></div>
+          <button class="small ghost" data-table="chart-meal-daily">Show table</button>
+        </div>
+        <div class="chart" id="chart-meal-daily"></div>
+        <div id="table-chart-meal-daily" class="scroll hidden" style="padding-bottom:14px"></div>
+      </div>
+
+      <div class="cols">
+        <div class="card chartcard">
+          <div class="section-head">
+            <div><h2>Employees by department</h2><p class="sub">Company cost.</p></div>
+            <button class="small ghost" data-table="chart-meal-dept">Show table</button>
+          </div>
+          <div class="chart" id="chart-meal-dept"></div>
+          <div id="table-chart-meal-dept" class="scroll hidden" style="padding-bottom:14px"></div>
+        </div>
+        <div class="card chartcard">
+          <div class="section-head">
+            <div><h2>Contractors by company</h2><p class="sub">What to bill back.</p></div>
+            <button class="small ghost" data-table="chart-meal-company">Show table</button>
+          </div>
+          <div class="chart" id="chart-meal-company"></div>
+          <div id="table-chart-meal-company" class="scroll hidden" style="padding-bottom:14px"></div>
+        </div>
+      </div>
+
+      <div class="cols">
+        <div class="card chartcard">
+          <div class="section-head">
+            <div><h2>By meal period</h2><p class="sub">Where the spend sits.</p></div>
+            <button class="small ghost" data-table="chart-meal-period">Show table</button>
+          </div>
+          <div class="chart" id="chart-meal-period"></div>
+          <div id="table-chart-meal-period" class="scroll hidden" style="padding-bottom:14px"></div>
+        </div>
+        <div class="card pad">
+          <h2>Most meals taken</h2>
+          <p class="sub">Top 15 this month.</p>
+          <div class="scroll"><table>
+            <thead><tr><th>Name</th><th>Type</th><th>Department / company</th><th class="num">Meals</th><th class="num">Cost</th></tr></thead>
+            <tbody id="top-consumers"></tbody>
+          </table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================== GATE ============ -->
+    <section id="tab-gate" class="stack hidden">
+      <div class="card pad noprint">
+        <div class="row">
+          <div style="min-width:180px"><label for="gate-month">Month</label><select id="gate-month"></select></div>
+          <div class="grow"></div>
+          <button class="small" id="btn-gate-csv">Download CSV</button>
+        </div>
+      </div>
+
+      <div class="tiles" id="gate-tiles"></div>
+
+      <div class="card chartcard">
+        <div class="section-head">
+          <div><h2>Entries and exits per day</h2><p class="sub">A gap between the two means someone was not scanned out.</p></div>
+          <button class="small ghost" data-table="chart-gate-daily">Show table</button>
+        </div>
+        <div class="legend">
+          <span><i class="swatch" style="background:var(--series-1)"></i>Entries</span>
+          <span><i class="swatch" style="background:var(--series-2)"></i>Exits</span>
+        </div>
+        <div class="chart" id="chart-gate-daily"></div>
+        <div id="table-chart-gate-daily" class="scroll hidden" style="padding-bottom:14px"></div>
+      </div>
+
+      <div class="card pad">
+        <h2>Time on site by department and company</h2>
+        <p class="sub">Total hours between matched entry and exit scans.</p>
+        <div class="scroll"><table>
+          <thead><tr><th>Department / company</th><th>Type</th><th class="num">Visits</th><th class="num">Hours</th></tr></thead>
+          <tbody id="gate-orgs"></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- ============================================== PEOPLE ========== -->
+    <section id="tab-people" class="stack hidden">
+      <div class="card pad">
+        <div class="row">
+          <div class="grow" style="min-width:220px"><label for="p-q">Search</label><input id="p-q" type="text" placeholder="Name, company, badge"></div>
+          <div style="min-width:160px"><label for="p-type">Type</label>
+            <select id="p-type">
+              <option value="">All</option><option value="employee">Employees</option>
+              <option value="contractor">Contractors</option><option value="guest">Guests</option>
+            </select>
+          </div>
+          <div style="min-width:150px"><label for="p-status">Status</label>
+            <select id="p-status"><option value="">All</option><option value="active">Active</option><option value="inactive">Inactive</option></select>
+          </div>
+          <button class="primary" id="btn-add-person" style="align-self:flex-end">Add person</button>
+        </div>
+      </div>
+      <div class="card pad">
+        <div class="scroll"><table>
+          <thead><tr><th>Name</th><th>Type</th><th>Department / company</th><th>Badge</th><th>Card</th><th>Cafeteria</th><th>Entry</th><th>Status</th><th></th></tr></thead>
+          <tbody id="people-rows"></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- ============================================== BADGES ========== -->
+    <section id="tab-badges" class="stack hidden">
+      <div class="card pad noprint">
+        <div class="section-head">
+          <div><h2>Print badges</h2><p class="sub">Pick who needs one, then print. Each QR is signed — a photocopy of someone else's badge will not open the gate.</p></div>
+          <div class="row">
+            <select id="badge-type" style="width:auto;min-width:170px">
+              <option value="">Everyone active</option>
+              <option value="employee">Employees</option>
+              <option value="contractor">Contractors</option>
+            </select>
+            <button class="small" id="btn-badge-load">Load</button>
+            <button class="primary small" id="btn-badge-print">Print</button>
+          </div>
+        </div>
+      </div>
+      <div class="badgesheet" id="badgesheet"></div>
+    </section>
+
+    <!-- ============================================== SETTINGS ======== -->
+    <section id="tab-settings" class="stack hidden">
+      <div class="card pad">
+        <h2>Meal periods and unit costs</h2>
+        <p class="sub">The unit cost is what each meal is valued at in the reports. Nobody pays at the counter.</p>
+        <div class="scroll"><table>
+          <thead><tr><th>Period</th><th>Starts</th><th>Ends</th><th class="num">Unit cost</th><th></th></tr></thead>
+          <tbody id="period-rows"></tbody>
+        </table></div>
+      </div>
+      <div class="card pad">
+        <div class="section-head">
+          <div>
+            <h2>Departments and their heads</h2>
+            <p class="sub">Every person belongs to a department, and its head signs off on
+              the cafeteria and on any visit that department hosts. No head, no approval.</p>
+          </div>
+          <button class="primary small" id="btn-add-dept" style="align-self:start">Add department</button>
+        </div>
+        <div class="scroll"><table>
+          <thead><tr><th>Department</th><th>Head</th><th>Email for approvals</th><th></th></tr></thead>
+          <tbody id="dept-rows"></tbody>
+        </table></div>
+      </div>
+
+      <div class="card pad">
+        <h2>Station accounts</h2>
+        <p class="sub">Give each guard the <b>guard</b> role and each cafeteria attendant <b>cafeteria</b>. Managers get <b>manager</b>.</p>
+        <div class="scroll"><table>
+          <thead><tr><th>Name</th><th>Email</th><th>Roles</th><th>Passkeys</th><th></th></tr></thead>
+          <tbody id="user-rows"></tbody>
+        </table></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="tip" id="tip"></div>
+
+<dialog id="dlg-person">
+  <h3 id="dlg-person-title" style="margin:0 0 14px">Add person</h3>
+  <div id="person-msg" class="msg"></div>
+  <div class="grid2">
+    <div class="field"><label for="f-type">Type *</label>
+      <select id="f-type">
+        <option value="employee">Employee</option>
+        <option value="ojt">OJT</option>
+        <option value="contractor">Contractor</option>
+        <option value="visitor">Visitor</option>
+      </select>
+    </div>
+    <div class="field"><label for="f-name">Full name *</label><input id="f-name" type="text"></div>
+    <div class="field" id="wrap-dept"><label for="f-dept" id="lbl-dept">Department *</label>
+      <input id="f-dept" type="text" list="dept-list" autocomplete="off">
+      <datalist id="dept-list"></datalist>
+    </div>
+    <div class="field" id="wrap-company"><label for="f-company">Company *</label><input id="f-company" type="text"></div>
+    <div class="field" id="wrap-email"><label for="f-email" id="lbl-email">Email</label>
+      <input id="f-email" type="email" placeholder="Where the entry QR is sent"></div>
+    <div class="field"><label for="f-position">Position</label><input id="f-position" type="text"></div>
+    <div class="field"><label for="f-card">RFID / NFC card number</label><input id="f-card" type="text" placeholder="Tap the card into this box"></div>
+    <div class="field"><label for="f-valid">Pass valid until</label><input id="f-valid" type="text" placeholder="YYYY-MM-DD (blank = no expiry)"></div>
+    <div class="field"><label for="f-meals">Cafeteria</label>
+      <select id="f-meals"><option value="yes">Eligible for meals</option><option value="no">Not eligible</option></select>
+    </div>
+  </div>
+  <div class="row" style="justify-content:flex-end;margin-top:8px">
+    <button class="ghost" id="p-cancel">Cancel</button>
+    <button class="primary" id="p-save">Save</button>
+  </div>
+</dialog>
+
+<script src="vendor/qrcode.js"></script>
+<script>
+/* ==========================================================================
+ *  CONFIGURE ME — the /exec URL of your Apps Script deployment.
+ * ========================================================================== */
+const API_URL = 'PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE';
+
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const TOKEN_KEY = 'ds-console.token';
+
+let state = { token: localStorage.getItem(TOKEN_KEY) || null, user: null, tab: 'onsite',
+              people: [], editing: null, badges: [], currency: '₱', departments: [] };
+
+async function api(action, params = {}) {
+  if (API_URL.startsWith('PASTE_')) throw new Error('Set API_URL at the top of console.html.');
+  const body = Object.assign({ action, userAgent: navigator.userAgent }, params);
+  if (state.token && !('token' in params)) body.token = state.token;
+  const res = await fetch(API_URL, {
+    method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(body), redirect: 'follow'
+  });
+  const text = await res.text();
+  let json;
+  try { json = JSON.parse(text); } catch (e) { throw new Error('The server did not return JSON.'); }
+  if (!json.ok) { const err = new Error(json.error || 'Request failed.'); err.status = json.status; throw err; }
+  return json;
+}
+
+/* ----------------------------------------------------------------- utils - */
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const num = n => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+const money = n => state.currency + Number(n || 0).toLocaleString(undefined,
+  { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const shortMoney = n => state.currency + Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+const dayLabel = d => String(d).slice(8);
+const timeOf = iso => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const dateOf = iso => new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short' });
+
+function message(el, text, kind = 'err') {
+  el.textContent = text; el.className = 'msg show ' + kind;
+  if (kind === 'ok') setTimeout(() => { if (el.textContent === text) el.className = 'msg'; }, 4000);
+}
+function clearMessage(el) { el.className = 'msg'; }
+
+const STATUS_LABEL = {
+  approved: 'approved', pending: 'waiting', declined: 'declined',
+  not_required: '—'
+};
+function statusPill(status) {
+  const cls = status === 'approved' ? 'good'
+    : status === 'declined' ? 'bad'
+    : status === 'not_required' ? '' : 'warn';
+  const label = STATUS_LABEL[status] || status;
+  return `<span class="pill ${cls}">${esc(label)}</span>`;
+}
+
+function tile(label, value, foot, footClass) {
+  return `<div class="tile"><div class="label">${esc(label)}</div>
+    <div class="value">${esc(value)}</div>
+    ${foot ? `<div class="foot ${footClass || ''}">${esc(foot)}</div>` : ''}</div>`;
+}
+
+/* ------------------------------------------------------------- tooltips -- */
+const tip = $('#tip');
+function showTip(ev, html) {
+  tip.innerHTML = html;
+  tip.style.opacity = '1';
+  const pad = 14;
+  let x = ev.clientX + pad, y = ev.clientY + pad;
+  const r = tip.getBoundingClientRect();
+  if (x + r.width > innerWidth - 8) x = ev.clientX - r.width - pad;
+  if (y + r.height > innerHeight - 8) y = ev.clientY - r.height - pad;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+function hideTip() { tip.style.opacity = '0'; }
+
+/* ---------------------------------------------------------------- charts - */
+/* Hand-drawn SVG: thin marks, hairline grid, 4px rounded tops anchored to the
+   baseline, a 2px surface gap between adjacent bars, and a hover layer whose
+   hit area is wider than the mark. Every chart has a table twin. */
+
+/* Round axis numbers people can read: a step from 1/2/2.5/5 × 10^k. */
+function niceScale(maxValue, wanted = 4) {
+  if (!(maxValue > 0)) return { max: 1, ticks: [0, 1] };
+  const raw = maxValue / wanted;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm = raw / mag;
+  const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10) * mag;
+  const max = Math.ceil(maxValue / step) * step;
+  const ticks = [];
+  for (let t = 0; t <= max + step / 2; t += step) ticks.push(Math.round(t * 100) / 100);
+  return { max, ticks };
+}
+
+/* Draw at the card's real pixel width so labels are their intended size
+   rather than shrunk by a fixed viewBox. Redraw on resize without refetching. */
+function sized(host, fallback) {
+  const w = Math.round(host.getBoundingClientRect().width);
+  return Math.max(300, w || fallback);
+}
+const REDRAW = new Map();
+let redrawTimer = null;
+addEventListener('resize', () => {
+  clearTimeout(redrawTimer);
+  redrawTimer = setTimeout(() => REDRAW.forEach(fn => { try { fn(); } catch (e) {} }), 180);
+});
+
+/** Vertical bars over time — one series. */
+function verticalBars(host, rows, opts) {
+  REDRAW.set(host.id, () => verticalBars(host, rows, opts));
+  if (!rows.length) { host.innerHTML = '<div class="empty">No data for this month yet.</div>'; return; }
+  const W = sized(host, 860), H = 250, padL = 64, padR = 12, padT = 12, padB = 30;
+  rows = rows.map(r => Object.assign({}, r, { value: isFinite(Number(r.value)) ? Number(r.value) : 0 }));
+  const scale = niceScale(Math.max(...rows.map(r => r.value)));
+  const max = scale.max;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const step = plotW / rows.length;
+  const bw = Math.max(3, Math.min(30, step - 3));      // 2px+ surface gap between bars
+  const y = v => padT + plotH - (v / max) * plotH;
+
+  const grid = scale.ticks.map(t => `
+    <line class="gridline" x1="${padL}" x2="${W - padR}" y1="${y(t)}" y2="${y(t)}"/>
+    <text x="${padL - 8}" y="${y(t) + 3.5}" text-anchor="end">${esc(opts.tick(t))}</text>`).join('');
+
+  const bars = rows.map((r, i) => {
+    const cx = padL + step * i + step / 2;
+    const h = Math.max(r.value > 0 ? 2 : 0, plotH - (y(r.value) - padT));
+    return `<rect x="${cx - bw / 2}" y="${y(r.value)}" width="${bw}" height="${h}"
+              rx="4" fill="var(--series-1)"/>`;
+  }).join('');
+
+  // hit areas are the full column so a 3px bar is still easy to hover
+  const hits = rows.map((r, i) => `
+    <rect class="hit" x="${padL + step * i}" y="${padT}" width="${step}" height="${plotH}"
+      fill="transparent" data-i="${i}" tabindex="0"/>`).join('');
+
+  const every = Math.ceil(rows.length / 12);
+  const xlabels = rows.map((r, i) => (i % every === 0)
+    ? `<text x="${padL + step * i + step / 2}" y="${H - 10}" text-anchor="middle">${esc(opts.xLabel(r))}</text>` : '').join('');
+
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.aria)}" class="axis"
+      preserveAspectRatio="xMidYMid meet">${grid}${bars}${xlabels}${hits}</svg>`;
+
+  host.querySelectorAll('.hit').forEach(el => {
+    const r = rows[Number(el.dataset.i)];
+    const html = opts.tip(r);
+    el.addEventListener('mousemove', ev => showTip(ev, html));
+    el.addEventListener('mouseleave', hideTip);
+    el.addEventListener('focus', ev => {
+      const b = el.getBoundingClientRect();
+      showTip({ clientX: b.left + b.width / 2, clientY: b.top }, html);
+    });
+    el.addEventListener('blur', hideTip);
+  });
+}
+
+/** Two series, grouped — entries and exits. */
+function groupedBars(host, rows, opts) {
+  REDRAW.set(host.id, () => groupedBars(host, rows, opts));
+  if (!rows.length) { host.innerHTML = '<div class="empty">No data for this month yet.</div>'; return; }
+  const W = sized(host, 860), H = 250, padL = 48, padR = 12, padT = 12, padB = 30;
+  const scale = niceScale(Math.max(...rows.map(r => Math.max(r.a, r.b))), 3);
+  const max = scale.max;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const step = plotW / rows.length;
+  const bw = Math.max(2.5, Math.min(12, (step - 4) / 2));
+  const y = v => padT + plotH - (v / max) * plotH;
+
+  const grid = scale.ticks.map(t => `
+    <line class="gridline" x1="${padL}" x2="${W - padR}" y1="${y(t)}" y2="${y(t)}"/>
+    <text x="${padL - 8}" y="${y(t) + 3.5}" text-anchor="end">${num(t)}</text>`).join('');
+
+  const bars = rows.map((r, i) => {
+    const cx = padL + step * i + step / 2;
+    const ha = Math.max(r.a > 0 ? 2 : 0, plotH - (y(r.a) - padT));
+    const hb = Math.max(r.b > 0 ? 2 : 0, plotH - (y(r.b) - padT));
+    return `<rect x="${cx - bw - 1}" y="${y(r.a)}" width="${bw}" height="${ha}" rx="3" fill="var(--series-1)"/>
+            <rect x="${cx + 1}" y="${y(r.b)}" width="${bw}" height="${hb}" rx="3" fill="var(--series-2)"/>`;
+  }).join('');
+
+  const hits = rows.map((r, i) => `
+    <rect class="hit" x="${padL + step * i}" y="${padT}" width="${step}" height="${plotH}"
+      fill="transparent" data-i="${i}" tabindex="0"/>`).join('');
+
+  const every = Math.ceil(rows.length / 12);
+  const xlabels = rows.map((r, i) => (i % every === 0)
+    ? `<text x="${padL + step * i + step / 2}" y="${H - 10}" text-anchor="middle">${esc(dayLabel(r.day))}</text>` : '').join('');
+
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.aria)}" class="axis"
+      preserveAspectRatio="xMidYMid meet">${grid}${bars}${xlabels}${hits}</svg>`;
+
+  host.querySelectorAll('.hit').forEach(el => {
+    const r = rows[Number(el.dataset.i)];
+    const html = `<b>${esc(dateOf(r.day + 'T00:00:00'))}</b>
+      <span class="v">${num(r.a)} entries · ${num(r.b)} exits</span>`;
+    el.addEventListener('mousemove', ev => showTip(ev, html));
+    el.addEventListener('mouseleave', hideTip);
+    el.addEventListener('focus', () => {
+      const b = el.getBoundingClientRect();
+      showTip({ clientX: b.left + b.width / 2, clientY: b.top }, html);
+    });
+    el.addEventListener('blur', hideTip);
+  });
+}
+
+/** Ranked horizontal bars, value labelled outside the bar end. */
+function rankedBars(host, rows, opts) {
+  REDRAW.set(host.id, () => rankedBars(host, rows, opts));
+  if (!rows.length) { host.innerHTML = '<div class="empty">Nothing recorded for this month.</div>'; return; }
+  // The reports name their measure (cost, meals, hours), so the caller says
+  // which field the bar length comes from rather than us guessing.
+  const val = r => { const v = Number(opts.value ? opts.value(r) : r.value); return isFinite(v) ? v : 0; };
+  const shown = rows.slice(0, opts.limit || 8);
+  const W = sized(host, 620);
+  const labelW = Math.round(Math.min(190, Math.max(110, W * 0.28)));
+  const valueW = 84, rowH = 34;
+  const H = shown.length * rowH + 12;
+  const max = Math.max(...shown.map(val)) || 1;
+  const plotW = W - labelW - valueW - 12;
+  const colour = opts.color || 'var(--series-1)';
+
+  const bars = shown.map((r, i) => {
+    const y = i * rowH + 6;
+    const w = Math.max(3, (val(r) / max) * plotW);
+    const maxChars = Math.floor(labelW / 7);
+    const clipped = r.name.length > maxChars ? r.name.slice(0, maxChars - 1) + '…' : r.name;
+    return `
+      <text class="catlabel" x="0" y="${y + 20}">${esc(clipped)}</text>
+      <rect x="${labelW}" y="${y + 8}" width="${w}" height="18" rx="4" fill="${colour}"/>
+      <text class="barlabel" x="${labelW + w + 8}" y="${y + 21}">${esc(opts.format(val(r)))}</text>
+      <rect class="hit" x="0" y="${y}" width="${W}" height="${rowH}" fill="transparent"
+        data-i="${i}" tabindex="0"/>`;
+  }).join('');
+
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.aria)}" class="axis"
+      preserveAspectRatio="xMidYMid meet">${bars}</svg>`;
+
+  host.querySelectorAll('.hit').forEach(el => {
+    const r = shown[Number(el.dataset.i)];
+    const html = `<b>${esc(r.name)}</b><span class="v">${esc(opts.tip(r))}</span>`;
+    el.addEventListener('mousemove', ev => showTip(ev, html));
+    el.addEventListener('mouseleave', hideTip);
+    el.addEventListener('focus', () => {
+      const b = el.getBoundingClientRect();
+      showTip({ clientX: b.left + 120, clientY: b.top }, html);
+    });
+    el.addEventListener('blur', hideTip);
+  });
+}
+
+function tableTwin(hostId, headers, rows) {
+  const el = $('#table-' + hostId);
+  if (!el) return;
+  el.innerHTML = `<table><thead><tr>${headers.map((h, i) =>
+    `<th class="${i ? 'num' : ''}">${esc(h)}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(r => `<tr>${r.map((c, i) =>
+      `<td class="${i ? 'num' : ''}">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+
+document.addEventListener('click', ev => {
+  const btn = ev.target.closest('[data-table]');
+  if (!btn) return;
+  const id = btn.dataset.table;
+  const table = $('#table-' + id), chart = $('#' + id);
+  const showing = table.classList.toggle('hidden');
+  chart.classList.toggle('hidden', !showing);
+  btn.textContent = showing ? 'Show table' : 'Show chart';
+});
+
+/* ------------------------------------------------------------- rendering - */
+async function loadOverview() {
+  const o = await api('report.overview');
+  state.currency = o.currencySymbol || '₱';
+  $('#overview-tiles').innerHTML =
+    tile('On site now', num(o.onsite.total),
+      `${o.onsite.counts.employee || 0} staff · ${o.onsite.counts.contractor || 0} contractors · ${o.onsite.counts.guest || 0} guests`) +
+    tile('Overdue on site', num(o.onsite.overdue),
+      o.onsite.overdue ? 'Guests or contractors past their expected hours' : 'Nobody over their hours',
+      o.onsite.overdue ? 'up' : '') +
+    tile('Meals today', num(o.today.meals), money(o.today.cost)) +
+    tile('Meal cost this month', shortMoney(o.monthToDate.cost), `${num(o.monthToDate.meals)} meals`) +
+    tile('People on file', num(o.people.total),
+      `${num(o.people.employees)} employees · ${num(o.people.contractors)} contractors`);
+}
+
+async function loadOnsite() {
+  const r = await api('gate.onsite');
+  $('#onsite-sub').textContent = r.total
+    ? `${r.total} inside as of ${timeOf(r.generatedAt)}`
+    : 'Nobody is signed in right now.';
+  $('#onsite-rows').innerHTML = r.onsite.length ? r.onsite.map(p => `
+    <tr>
+      <td><b>${esc(p.fullName)}</b></td>
+      <td><span class="pill ${esc(p.personType)}">${esc(p.personType)}</span></td>
+      <td>${esc(p.org || '—')}</td>
+      <td>${esc(dateOf(p.since))} ${esc(timeOf(p.since))}</td>
+      <td class="num">${p.hours}${p.overdue ? ' <span class="pill bad">overdue</span>' : ''}</td>
+      <td>${esc(p.vehiclePlate || '—')}</td>
+    </tr>`).join('') : '<tr><td colspan="6" class="empty">Nobody on site.</td></tr>';
+}
+
+async function loadMonths() {
+  const m = await api('report.months');
+  const now = new Date().toISOString().slice(0, 7);
+  const fill = (sel, list) => {
+    const months = list.length ? list : [now];
+    sel.innerHTML = months.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('');
+  };
+  fill($('#meal-month'), m.meal);
+  fill($('#gate-month'), m.gate);
+}
+
+async function loadMeals() {
+  const month = $('#meal-month').value || new Date().toISOString().slice(0, 7);
+  const [r, trend] = await Promise.all([
+    api('report.mealCost', { month }), api('report.mealTrend', { month })
+  ]);
+  state.currency = r.currencySymbol || '₱';
+
+  const deltaText = trend.previousCost
+    ? `${trend.delta >= 0 ? '+' : ''}${trend.deltaPercent}% vs ${trend.previousMonth}`
+    : 'No comparable previous month';
+  $('#meal-tiles').innerHTML =
+    tile('Total cost', money(r.totals.cost), deltaText,
+      trend.previousCost ? (trend.delta > 0 ? 'up' : 'down') : '') +
+    tile('Meals served', num(r.totals.meals), `${num(r.totals.people)} different people`) +
+    tile('Average per meal', money(r.totals.averagePerMeal)) +
+    tile('Average per day', money(r.totals.averagePerDay));
+
+  verticalBars($('#chart-meal-daily'), r.series.map(s => ({ ...s, value: s.cost })), {
+    aria: 'Meal cost per day for ' + month,
+    tick: t => shortMoney(t),
+    xLabel: s => dayLabel(s.day),
+    tip: s => `<b>${esc(dateOf(s.day + 'T00:00:00'))}</b><span class="v">${money(s.cost)} · ${num(s.meals)} meals</span>`
+  });
+  tableTwin('chart-meal-daily', ['Day', 'Meals', 'Cost'],
+    r.series.map(s => [s.day, num(s.meals), money(s.cost)]));
+
+  rankedBars($('#chart-meal-dept'), r.byDepartment, {
+    aria: 'Meal cost by department',
+    value: d => d.cost,
+    format: shortMoney,
+    tip: d => `${money(d.cost)} · ${num(d.meals)} meals · ${num(d.people)} people`
+  });
+  tableTwin('chart-meal-dept', ['Department', 'People', 'Meals', 'Cost'],
+    r.byDepartment.map(d => [d.name, num(d.people), num(d.meals), money(d.cost)]));
+
+  rankedBars($('#chart-meal-company'), r.byCompany, {
+    aria: 'Meal cost by contracting company',
+    color: 'var(--series-2)',
+    value: d => d.cost,
+    format: shortMoney,
+    tip: d => `${money(d.cost)} · ${num(d.meals)} meals · ${num(d.people)} people`
+  });
+  tableTwin('chart-meal-company', ['Company', 'People', 'Meals', 'Cost'],
+    r.byCompany.map(d => [d.name, num(d.people), num(d.meals), money(d.cost)]));
+
+  rankedBars($('#chart-meal-period'), r.byPeriod, {
+    aria: 'Meal cost by meal period',
+    value: d => d.cost,
+    format: shortMoney,
+    tip: d => `${money(d.cost)} · ${num(d.meals)} meals`
+  });
+  tableTwin('chart-meal-period', ['Period', 'Meals', 'Cost'],
+    r.byPeriod.map(d => [d.name, num(d.meals), money(d.cost)]));
+
+  $('#top-consumers').innerHTML = r.topConsumers.length ? r.topConsumers.slice(0, 15).map(p => `
+    <tr><td>${esc(p.fullName)}</td>
+      <td><span class="pill ${esc(p.personType)}">${esc(p.personType)}</span></td>
+      <td>${esc(p.org)}</td>
+      <td class="num">${num(p.meals)}</td>
+      <td class="num">${money(p.cost)}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="empty">No meals recorded this month.</td></tr>';
+}
+
+async function loadGate() {
+  const month = $('#gate-month').value || new Date().toISOString().slice(0, 7);
+  const r = await api('report.gateTraffic', { month });
+
+  $('#gate-tiles').innerHTML =
+    tile('Entries', num(r.totals.entries)) +
+    tile('Exits', num(r.totals.exits)) +
+    tile('Never scanned out', num(r.totals.unmatched),
+      r.totals.unmatched ? 'Check the on-site list' : 'Every entry has an exit',
+      r.totals.unmatched ? 'up' : 'down') +
+    tile('Average stay', r.totals.averageStayHours + ' h') +
+    tile('Busiest hour', r.peakHour ? r.peakHour.hour : '—',
+      r.peakHour ? num(r.peakHour.entries) + ' entries' : '');
+
+  groupedBars($('#chart-gate-daily'),
+    r.series.map(s => ({ day: s.day, a: s.entries, b: s.exits })),
+    { aria: 'Entries and exits per day for ' + month });
+  tableTwin('chart-gate-daily', ['Day', 'Entries', 'Exits'],
+    r.series.map(s => [s.day, num(s.entries), num(s.exits)]));
+
+  $('#gate-orgs').innerHTML = r.byOrg.length ? r.byOrg.map(o => `
+    <tr><td>${esc(o.name)}</td>
+      <td><span class="pill ${esc(o.personType)}">${esc(o.personType)}</span></td>
+      <td class="num">${num(o.visits)}</td>
+      <td class="num">${o.hours}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="empty">No gate activity this month.</td></tr>';
+}
+
+async function loadApprovals() {
+  const status = $('#appr-status').value;
+  const r = await api('approval.list', { status, limit: 200 });
+  $('#approvals-sub').textContent = r.approvals.length
+    ? r.approvals.length + ' ' + status
+    : 'Nothing ' + status + '.';
+
+  $('#approval-rows').innerHTML = r.approvals.length ? r.approvals.map(a => {
+    const waiting = a.steps.filter(s => s.status === 'pending');
+    const done = a.steps.filter(s => s.status !== 'pending');
+    return `
+      <tr>
+        <td><b>${esc(a.personName)}</b>
+          <div class="muted"><span class="pill ${esc(a.personType)}">${esc(a.typeLabel)}</span>
+            ${esc(a.org || '')}</div></td>
+        <td>${a.kind === 'access'
+          ? '<span class="pill">entry</span>' : '<span class="pill">cafeteria</span>'}</td>
+        <td>${waiting.length
+          ? waiting.map(s => esc(s.role === 'security' ? 'Security' : (s.name || 'Dept head'))).join('<br>')
+          : '<span class="muted">nobody</span>'}
+          ${done.length ? `<div class="muted" style="font-size:12px">${done.map(s =>
+            esc((s.role === 'security' ? 'Security' : (s.name || 'Dept head')) + ' · ' + s.status)
+          ).join('<br>')}</div>` : ''}</td>
+        <td class="num">${a.ageHours} h</td>
+        <td class="muted">${esc(a.requestedBy)}</td>
+        <td>${a.status === 'pending' ? `<div class="row" style="flex-wrap:nowrap">
+          <button class="small" data-resend-appr="${esc(a.id)}">Chase</button>
+          <button class="small" data-cancel-appr="${esc(a.id)}">Withdraw</button>
+        </div>` : ''}</td>
+      </tr>`;
+  }).join('') : `<tr><td colspan="6" class="empty">Nothing ${esc(status)}.</td></tr>`;
+}
+
+async function loadDepartments() {
+  const r = await api('people.departments');
+  state.departments = r.departments || [];
+  const list = $('#dept-list');
+  if (list) list.innerHTML = state.departments.map(d => `<option value="${esc(d.name)}">`).join('');
+  return state.departments;
+}
+
+async function loadPeople() {
+  const r = await api('people.list', {
+    query: $('#p-q').value.trim(),
+    personType: $('#p-type').value,
+    status: $('#p-status').value
+  });
+  state.people = r.people;
+  $('#people-rows').innerHTML = r.people.length ? r.people.map(p => `
+    <tr>
+      <td><b>${esc(p.fullName)}</b>${p.position ? `<div class="pill">${esc(p.position)}</div>` : ''}</td>
+      <td><span class="pill ${esc(p.personType)}">${esc(p.personType)}</span></td>
+      <td>${esc(p.org || '—')}</td>
+      <td class="num">${esc(p.badgeSerial || '—')}</td>
+      <td>${p.hasCard ? '<span class="pill good">yes</span>' : '<span class="pill">—</span>'}</td>
+      <td>${statusPill(p.mealStatus)}</td>
+      <td>${statusPill(p.accessStatus)}${p.passSentAt ? ' <span class="pill good">QR sent</span>' : ''}</td>
+      <td>${p.status === 'active' ? '<span class="pill good">active</span>' : '<span class="pill bad">inactive</span>'}</td>
+      <td><div class="row" style="flex-wrap:nowrap">
+        <button class="small" data-edit="${esc(p.id)}">Edit</button>
+        ${p.accessStatus === 'approved' && p.email
+          ? `<button class="small" data-resend="${esc(p.id)}">Resend QR</button>` : ''}
+      </div></td>
+    </tr>`).join('') : '<tr><td colspan="9" class="empty">Nobody matches.</td></tr>';
+}
+
+async function loadSettings() {
+  const [{ periods }, users, depts] = await Promise.all([
+    api('meal.periods'), api('admin.users'), api('people.departments')
+  ]);
+  state.departments = depts.departments || [];
+
+  $('#dept-rows').innerHTML = state.departments.length ? state.departments.map(d => `
+    <tr data-dept="${esc(d.name)}">
+      <td><b>${esc(d.name)}</b></td>
+      <td><input class="d-head" type="text" value="${esc(d.headName)}" style="max-width:190px"></td>
+      <td><input class="d-email" type="email" value="${esc(d.headEmail)}" style="max-width:250px"
+        placeholder="nobody can approve without this"></td>
+      <td><button class="small d-save">Save</button></td>
+    </tr>`).join('')
+    : '<tr><td colspan="4" class="empty">No departments yet. Add one — nothing can be approved until you do.</td></tr>';
+  $('#period-rows').innerHTML = periods.map(p => `
+    <tr data-code="${esc(p.code)}">
+      <td><b>${esc(p.label)}</b></td>
+      <td><input class="p-start" type="text" value="${esc(p.startTime)}" style="max-width:110px"></td>
+      <td><input class="p-end" type="text" value="${esc(p.endTime)}" style="max-width:110px"></td>
+      <td class="num"><input class="p-cost" type="text" value="${esc(p.unitCost)}" style="max-width:110px;text-align:right"></td>
+      <td><button class="small p-save">Save</button></td>
+    </tr>`).join('');
+
+  $('#user-rows').innerHTML = users.users.map(u => `
+    <tr>
+      <td>${esc(u.name || '—')}</td><td>${esc(u.email)}</td>
+      <td><input class="u-roles" data-user="${esc(u.id)}" type="text" value="${esc((u.roles || []).join(','))}" style="max-width:230px"></td>
+      <td class="num">${num(u.passkeyCount)}</td>
+      <td><button class="small u-save" data-user="${esc(u.id)}">Save roles</button></td>
+    </tr>`).join('');
+}
+
+async function loadBadges() {
+  const list = await api('people.list', {
+    personType: $('#badge-type').value, status: 'active'
+  });
+  const ids = list.people.filter(p => p.badgeSerial).map(p => p.id);
+  if (!ids.length) {
+    $('#badgesheet').innerHTML = '<div class="empty">Nobody in this group has a badge number yet.</div>';
+    return;
+  }
+  const { badges } = await api('people.badges', { personIds: ids });
+  $('#badgesheet').innerHTML = badges.map(b => `
+    <div class="badge">
+      <canvas data-token="${esc(b.badgeToken)}" width="184" height="184"></canvas>
+      <div>
+        <div class="bname">${esc(b.fullName)}</div>
+        <div class="bmeta">${esc(b.org || '')}</div>
+        <div class="bmeta">${esc(b.personType)}</div>
+        <div class="bserial">${esc(b.badgeSerial)}</div>
+      </div>
+    </div>`).join('');
+
+  $$('#badgesheet canvas').forEach(cv => {
+    const qr = qrcode(0, 'M');
+    qr.addData(cv.dataset.token);
+    qr.make();
+    const cx = cv.getContext('2d');
+    const count = qr.getModuleCount();
+    const scale = Math.floor(cv.width / (count + 4));
+    const offset = Math.floor((cv.width - count * scale) / 2);
+    cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, cv.width, cv.height);
+    cx.fillStyle = '#000000';
+    for (let r = 0; r < count; r++) {
+      for (let c = 0; c < count; c++) {
+        if (qr.isDark(r, c)) cx.fillRect(offset + c * scale, offset + r * scale, scale, scale);
+      }
+    }
+  });
+}
+
+/* ------------------------------------------------------------------ tabs - */
+const LOADERS = {
+  onsite: async () => { await loadOverview(); await loadOnsite(); },
+  approvals: loadApprovals,
+  meals: loadMeals,
+  gate: loadGate,
+  people: loadPeople,
+  badges: async () => { $('#badgesheet').innerHTML = '<div class="empty">Choose a group and press Load.</div>'; },
+  settings: loadSettings
+};
+
+async function showTab(tab) {
+  state.tab = tab;
+  $$('#nav button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
+  $$('section[id^=tab-]').forEach(s => s.classList.toggle('hidden', s.id !== 'tab-' + tab));
+  clearMessage($('#app-msg'));
+  try { await LOADERS[tab](); }
+  catch (e) { message($('#app-msg'), e.message); }
+}
+
+$('#nav').addEventListener('click', ev => {
+  const btn = ev.target.closest('button[data-tab]');
+  if (btn) showTab(btn.dataset.tab);
+});
+
+/* --------------------------------------------------------------- actions - */
+$('#btn-refresh-onsite').onclick = () => showTab('onsite');
+$('#btn-appr-refresh').onclick = () => loadApprovals().catch(e => message($('#app-msg'), e.message));
+$('#appr-status').onchange = () => loadApprovals().catch(e => message($('#app-msg'), e.message));
+
+$('#approval-rows').addEventListener('click', async ev => {
+  const chase = ev.target.closest('[data-resend-appr]');
+  const drop = ev.target.closest('[data-cancel-appr]');
+  if (chase) {
+    chase.disabled = true;
+    try {
+      const r = await api('approval.resend', { approvalId: chase.dataset.resendAppr });
+      const failed = r.sent.filter(x => !x.ok);
+      message($('#app-msg'), failed.length
+        ? 'Some reminders failed: ' + failed.map(f => f.email + ' (' + f.error + ')').join(', ')
+        : 'Reminder sent to ' + r.sent.map(x => x.email).join(', '),
+        failed.length ? 'err' : 'ok');
+    } catch (e) { message($('#app-msg'), e.message); }
+    finally { chase.disabled = false; }
+    return;
+  }
+  if (drop) {
+    const reason = prompt('Withdraw this request. Why?');
+    if (!reason) return;
+    try {
+      await api('approval.cancel', { approvalId: drop.dataset.cancelAppr, reason });
+      await loadApprovals();
+      message($('#app-msg'), 'Request withdrawn.', 'ok');
+    } catch (e) { message($('#app-msg'), e.message); }
+  }
+});
+
+$('#people-rows').addEventListener('click', async ev => {
+  const btn = ev.target.closest('[data-resend]');
+  if (!btn) return;
+  btn.disabled = true;
+  try {
+    const r = await api('approval.sendPass', { personId: btn.dataset.resend });
+    message($('#app-msg'), r.ok ? 'QR re-sent.' : 'Could not send: ' + r.error,
+      r.ok ? 'ok' : 'err');
+  } catch (e) { message($('#app-msg'), e.message); }
+  finally { btn.disabled = false; }
+});
+
+$('#btn-add-dept').onclick = async () => {
+  const name = prompt('Department name');
+  if (!name) return;
+  try {
+    await api('people.saveDepartment', { name, headName: '', headEmail: '' });
+    await loadSettings();
+    message($('#app-msg'), 'Added. Put the head\'s email in before anyone can be approved.', 'ok');
+  } catch (e) { message($('#app-msg'), e.message); }
+};
+
+$('#dept-rows').addEventListener('click', async ev => {
+  const btn = ev.target.closest('.d-save');
+  if (!btn) return;
+  const tr = btn.closest('tr');
+  btn.disabled = true;
+  try {
+    await api('people.saveDepartment', {
+      name: tr.dataset.dept,
+      headName: tr.querySelector('.d-head').value.trim(),
+      headEmail: tr.querySelector('.d-email').value.trim()
+    });
+    message($('#app-msg'), 'Department saved.', 'ok');
+  } catch (e) { message($('#app-msg'), e.message); }
+  finally { btn.disabled = false; }
+});
+$('#meal-month').onchange = () => loadMeals().catch(e => message($('#app-msg'), e.message));
+$('#gate-month').onchange = () => loadGate().catch(e => message($('#app-msg'), e.message));
+['p-q', 'p-type', 'p-status'].forEach(id => {
+  const el = $('#' + id);
+  const ev = el.tagName === 'SELECT' ? 'change' : 'input';
+  let t = null;
+  el.addEventListener(ev, () => { clearTimeout(t); t = setTimeout(() => loadPeople(), 250); });
+});
+$('#btn-badge-load').onclick = () => loadBadges().catch(e => message($('#app-msg'), e.message));
+$('#btn-badge-print').onclick = () => window.print();
+
+$('#btn-closeout').onclick = async () => {
+  const reason = prompt('Everyone still shown as on site will get an exit event. Why?');
+  if (!reason) return;
+  try {
+    const r = await api('gate.closeOut', { reason });
+    message($('#app-msg'), r.closed + ' people were signed out.', 'ok');
+    showTab('onsite');
+  } catch (e) { message($('#app-msg'), e.message); }
+};
+
+function downloadCsv(name, headers, rows) {
+  const q = v => {
+    const s = String(v == null ? '' : v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const csv = [headers.map(q).join(','), ...rows.map(r => r.map(q).join(','))].join('\n');
+  const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click();
+  a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+$('#btn-meal-csv').onclick = async () => {
+  try {
+    const r = await api('report.export', { kind: 'meal', month: $('#meal-month').value });
+    downloadCsv('meals-' + $('#meal-month').value + '.csv', r.headers, r.rows);
+  } catch (e) { message($('#app-msg'), e.message); }
+};
+$('#btn-gate-csv').onclick = async () => {
+  try {
+    const r = await api('report.export', { kind: 'gate', month: $('#gate-month').value });
+    downloadCsv('gate-' + $('#gate-month').value + '.csv', r.headers, r.rows);
+  } catch (e) { message($('#app-msg'), e.message); }
+};
+
+/* ---- people dialog ---- */
+function syncPersonForm() {
+  const t = $('#f-type').value;
+  const staff = (t === 'employee' || t === 'ojt');
+  // Everyone has a department: their own if staff, the one hosting them if not.
+  $('#lbl-dept').textContent = staff ? 'Department *' : 'Department they are visiting *';
+  $('#wrap-company').classList.toggle('hidden', staff);
+  $('#lbl-email').textContent = staff ? 'Email' : 'Email * — the entry QR goes here';
+}
+$('#f-type').onchange = syncPersonForm;
+
+$('#btn-add-person').onclick = () => {
+  state.editing = null;
+  $('#dlg-person-title').textContent = 'Add person';
+  ['f-name', 'f-dept', 'f-company', 'f-position', 'f-card', 'f-valid', 'f-email']
+    .forEach(id => { $('#' + id).value = ''; });
+  loadDepartments().catch(() => {});
+  $('#f-type').value = 'employee';
+  $('#f-meals').value = 'yes';
+  $('#f-type').disabled = false;
+  syncPersonForm();
+  clearMessage($('#person-msg'));
+  $('#dlg-person').showModal();
+};
+
+$('#people-rows').addEventListener('click', ev => {
+  const btn = ev.target.closest('[data-edit]');
+  if (!btn) return;
+  const p = state.people.find(x => x.id === btn.dataset.edit);
+  if (!p) return;
+  state.editing = p.id;
+  $('#dlg-person-title').textContent = 'Edit ' + p.fullName;
+  $('#f-type').value = p.personType;
+  $('#f-type').disabled = true;
+  $('#f-name').value = p.fullName;
+  $('#f-email').value = p.email || '';
+  $('#f-dept').value = p.department;
+  $('#f-company').value = p.company;
+  $('#f-position').value = p.position;
+  $('#f-card').value = p.cardId || '';
+  $('#f-valid').value = p.validUntil || '';
+  $('#f-meals').value = p.mealEligible ? 'yes' : 'no';
+  syncPersonForm();
+  clearMessage($('#person-msg'));
+  $('#dlg-person').showModal();
+});
+
+$('#p-cancel').onclick = () => $('#dlg-person').close();
+$('#p-save').onclick = async () => {
+  const btn = $('#p-save');
+  btn.disabled = true;
+  const payload = {
+    personType: $('#f-type').value,
+    fullName: $('#f-name').value.trim(),
+    email: $('#f-email').value.trim(),
+    department: $('#f-dept').value.trim(),
+    company: $('#f-company').value.trim(),
+    position: $('#f-position').value.trim(),
+    cardId: $('#f-card').value.trim(),
+    validUntil: $('#f-valid').value.trim(),
+    mealEligible: $('#f-meals').value === 'yes'
+  };
+  try {
+    const r = state.editing
+      ? await api('people.update', { personId: state.editing, patch: payload })
+      : await api('people.create', payload);
+    $('#dlg-person').close();
+    await loadPeople();
+    if (r.problems && r.problems.length) {
+      message($('#app-msg'), 'Saved, but nothing was sent for approval: ' +
+        r.problems.join(' '), 'err');
+    } else if (r.approvalsRaised) {
+      message($('#app-msg'), 'Saved. ' + r.approvalsRaised +
+        (r.approvalsRaised === 1 ? ' approval request' : ' approval requests') + ' emailed.', 'ok');
+    } else {
+      message($('#app-msg'), 'Saved.', 'ok');
+    }
+  } catch (e) { message($('#person-msg'), e.message); }
+  finally { btn.disabled = false; }
+};
+
+/* ---- settings ---- */
+$('#period-rows').addEventListener('click', async ev => {
+  const btn = ev.target.closest('.p-save');
+  if (!btn) return;
+  const tr = btn.closest('tr');
+  btn.disabled = true;
+  try {
+    await api('meal.savePeriod', {
+      code: tr.dataset.code,
+      label: tr.querySelector('b').textContent,
+      startTime: tr.querySelector('.p-start').value.trim(),
+      endTime: tr.querySelector('.p-end').value.trim(),
+      unitCost: Number(tr.querySelector('.p-cost').value)
+    });
+    message($('#app-msg'), 'Meal period updated.', 'ok');
+  } catch (e) { message($('#app-msg'), e.message); }
+  finally { btn.disabled = false; }
+});
+
+$('#user-rows').addEventListener('click', async ev => {
+  const btn = ev.target.closest('.u-save');
+  if (!btn) return;
+  const input = $('#user-rows .u-roles[data-user="' + btn.dataset.user + '"]');
+  btn.disabled = true;
+  try {
+    await api('admin.setRole', { userId: btn.dataset.user, role: input.value.trim() });
+    message($('#app-msg'), 'Roles updated.', 'ok');
+  } catch (e) { message($('#app-msg'), e.message); }
+  finally { btn.disabled = false; }
+});
+
+/* --------------------------------------------------------------- sign in - */
+const b64uToBuf = s => {
+  const bin = atob((s + '='.repeat((4 - s.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+  const b = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
+  return b;
+};
+const bufToB64u = buf => {
+  const bytes = new Uint8Array(buf); let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+
+async function passkeySignIn() {
+  const { options } = await api('passkey.loginBegin', { email: $('#si-email').value.trim(), token: '' });
+  const assertion = await navigator.credentials.get({
+    publicKey: {
+      challenge: b64uToBuf(options.challenge), rpId: options.rpId,
+      timeout: options.timeout, userVerification: options.userVerification,
+      allowCredentials: (options.allowCredentials || []).map(c => ({
+        type: c.type, id: b64uToBuf(c.id), transports: c.transports
+      }))
+    }
+  });
+  const r = assertion.response;
+  return api('passkey.loginFinish', {
+    token: '',
+    assertion: {
+      id: assertion.id, rawId: bufToB64u(assertion.rawId), type: assertion.type,
+      response: {
+        clientDataJSON: bufToB64u(r.clientDataJSON),
+        authenticatorData: bufToB64u(r.authenticatorData),
+        signature: bufToB64u(r.signature),
+        userHandle: r.userHandle ? bufToB64u(r.userHandle) : null
+      }
+    }
+  });
+}
+
+async function afterSignIn(result) {
+  state.token = result.token;
+  state.user = result.user;
+  localStorage.setItem(TOKEN_KEY, result.token);
+  $('#view-signin').classList.add('hidden');
+  $('#view-app').classList.remove('hidden');
+  const roles = result.user.roles || [];
+  $('#who').textContent = result.user.name + ' · ' + roles.join(', ');
+  $$('#nav button[data-tab=settings]').forEach(b =>
+    b.classList.toggle('hidden', roles.indexOf('admin') === -1));
+  await loadMonths();
+  await showTab('onsite');
+}
+
+function signOutLocal() {
+  state.token = null; state.user = null;
+  localStorage.removeItem(TOKEN_KEY);
+  $('#view-app').classList.add('hidden');
+  $('#view-signin').classList.remove('hidden');
+}
+
+$('#btn-passkey').onclick = async () => {
+  clearMessage($('#signin-msg'));
+  try { await afterSignIn(await passkeySignIn()); }
+  catch (e) { message($('#signin-msg'), e.name === 'NotAllowedError' ? 'Cancelled or timed out.' : e.message); }
+};
+$('#btn-signin').onclick = async () => {
+  clearMessage($('#signin-msg'));
+  try {
+    await afterSignIn(await api('auth.login', {
+      token: '', email: $('#si-email').value.trim(), password: $('#si-pass').value
+    }));
+    $('#si-pass').value = '';
+  } catch (e) { message($('#signin-msg'), e.message); }
+};
+$('#btn-signout').onclick = async () => {
+  try { await api('auth.logout'); } catch (e) { /* sign out locally regardless */ }
+  signOutLocal();
+};
+
+/* ------------------------------------------------------------------ boot - */
+(async function boot() {
+  if (!state.token) return;
+  try {
+    const me = await api('auth.me');
+    state.user = me.user;
+    $('#view-signin').classList.add('hidden');
+    $('#view-app').classList.remove('hidden');
+    const roles = me.user.roles || [];
+    $('#who').textContent = me.user.name + ' · ' + roles.join(', ');
+    $$('#nav button[data-tab=settings]').forEach(b =>
+      b.classList.toggle('hidden', roles.indexOf('admin') === -1));
+    await loadMonths();
+    await showTab('onsite');
+  } catch (e) { signOutLocal(); }
+})();
+</script>
+</body>
+</html>

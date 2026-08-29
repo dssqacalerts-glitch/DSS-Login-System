@@ -4,6 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Passkey Portal</title>
+
+<!-- Installable on iPhone, iPad, Android and Windows -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<meta name="application-name" content="Passkey Portal">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Passkey Portal">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
 <style>
   :root {
     --bg: #f6f7f9;
@@ -35,6 +47,8 @@
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+             env(safe-area-inset-bottom) env(safe-area-inset-left);
     font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
@@ -132,6 +146,12 @@
           border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .hidden { display: none !important; }
+  @media (pointer: coarse) {
+    button { min-height: 44px; }
+    button.small { min-height: 38px; }
+  }
+  .ghost { background: transparent; border-style: dashed; }
+  .install-hint { font-size: 12.5px; color: var(--muted); margin: 10px 0 0; }
   .stack { display: grid; gap: 16px; }
   .listitem { display: flex; align-items: center; justify-content: space-between;
               gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
@@ -162,8 +182,15 @@
         <svg viewBox="0 0 24 24"><path d="M12 10.5v5.2"/><path d="M9.6 11a2.4 2.4 0 0 1 4.8 0v2.2a7 7 0 0 1-.6 2.8"/><path d="M7.1 12.4V11a4.9 4.9 0 0 1 9.8 0v2.2a11 11 0 0 1-.8 4.1"/><path d="M4.6 13.2V11a7.4 7.4 0 0 1 3.6-6.3"/><path d="M19.4 13.4V11a7.4 7.4 0 0 0-4.5-6.8"/></svg>
         <span>Sign in with fingerprint</span>
       </button>
-      <p class="muted" style="font-size:12.5px;margin:0 0 4px">
+      <p class="muted" style="font-size:12.5px;margin:0 0 8px" id="passkey-hint">
         Touch ID, Windows Hello, or your phone's fingerprint sensor.
+      </p>
+      <button type="button" id="btn-phone" class="full ghost">
+        <svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M10.8 18.6h2.4"/></svg>
+        <span>Use a phone or tablet instead</span>
+      </button>
+      <p class="muted" style="font-size:12.5px;margin:6px 0 0">
+        Scan a QR code with a phone that already has your passkey.
       </p>
 
       <div class="divider">or use your password</div>
@@ -240,7 +267,10 @@
     <div class="card panel">
       <div class="row" style="align-items:center;justify-content:space-between;margin-bottom:6px">
         <h2 style="margin:0">Fingerprint sign-in</h2>
-        <button class="primary small" id="btn-enroll" style="flex:0 0 auto;padding:8px 14px">Add this device</button>
+        <div class="row" style="flex:0 0 auto">
+          <button class="primary small" id="btn-enroll" style="flex:0 0 auto;padding:8px 14px">Add this device</button>
+          <button class="small ghost" id="btn-enroll-phone" style="flex:0 0 auto;padding:8px 14px">Add a phone</button>
+        </div>
       </div>
       <p class="muted" style="margin:0 0 10px;font-size:13.5px">
         Each device you enrol stores a private key in its secure hardware. Your
@@ -307,7 +337,7 @@
  *  CONFIGURE ME
  *  Paste the /exec URL of your Apps Script deployment here.
  * ========================================================================= */
-const API_URL = https://script.google.com/macros/s/AKfycbyxBjxpArNd09-DcJilYhKiGdww-vwR4vKlqAqX_wHEOgxKmuXCVNmU3xnHQ5MEmVQ2/exec;
+const API_URL = 'PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE';
 
 /* ---------------------------------------------------------------- utils -- */
 const $ = sel => document.querySelector(sel);
@@ -373,6 +403,16 @@ function busy(btn, on, label) {
   }
 }
 
+/** What this platform calls its biometric unlock, for button and help text. */
+function platformSensorName() {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod/.test(ua)) return 'Face ID or Touch ID';
+  if (/Mac OS X/.test(ua)) return 'Touch ID';
+  if (/Windows/.test(ua)) return 'Windows Hello';
+  if (/Android/.test(ua)) return 'your fingerprint';
+  return 'your fingerprint';
+}
+
 function deviceName() {
   const ua = navigator.userAgent;
   const plat = /iPhone/.test(ua) ? 'iPhone'
@@ -407,8 +447,8 @@ async function platformAuthenticatorAvailable() {
   } catch (e) { return false; }
 }
 
-async function enrolFingerprint() {
-  const { options } = await api('passkey.registerBegin');
+async function enrolFingerprint(attachment) {
+  const { options } = await api('passkey.registerBegin', { attachment: attachment || 'platform' });
   const publicKey = {
     challenge: b64uToBuf(options.challenge),
     rp: options.rp,
@@ -429,7 +469,7 @@ async function enrolFingerprint() {
   if (!cred) throw new Error('No credential was created.');
 
   return api('passkey.registerFinish', {
-    label: deviceName(),
+    label: attachment === 'cross-platform' ? 'Phone or tablet (scanned)' : deviceName(),
     credential: {
       id: cred.id,
       rawId: bufToB64u(cred.rawId),
@@ -443,15 +483,21 @@ async function enrolFingerprint() {
   });
 }
 
-async function signInWithFingerprint(email, mediation) {
+async function signInWithFingerprint(email, opts = {}) {
+  const { mediation, forcePhone } = opts;
   const { options } = await api('passkey.loginBegin', { email: email || '', token: '' });
   const publicKey = {
     challenge: b64uToBuf(options.challenge),
     rpId: options.rpId,
-    timeout: options.timeout,
+    // Scanning a QR code and unlocking the phone takes longer than a touch.
+    timeout: forcePhone ? 180000 : options.timeout,
     userVerification: options.userVerification,
     allowCredentials: (options.allowCredentials || []).map(c => ({
-      type: c.type, id: b64uToBuf(c.id), transports: c.transports
+      type: c.type,
+      id: b64uToBuf(c.id),
+      // Narrowing the hint to 'hybrid' is what makes the browser go straight
+      // to the QR code rather than the sensor on this machine.
+      transports: forcePhone ? ['hybrid'] : c.transports
     }))
   };
   const request = { publicKey };
@@ -690,18 +736,20 @@ $('#tab-signup').onclick = () => {
   clearMessage($('#auth-msg'));
 };
 
-$('#btn-passkey').onclick = async () => {
-  const btn = $('#btn-passkey');
+async function runPasskeySignIn(btn, forcePhone) {
   clearMessage($('#auth-msg'));
-  busy(btn, true, 'Waiting for fingerprint…');
+  busy(btn, true, forcePhone ? 'Scan the QR code…' : 'Waiting for fingerprint…');
   try {
     const email = $('#si-email').value.trim();
-    const result = await signInWithFingerprint(email);
+    const result = await signInWithFingerprint(email, { forcePhone: forcePhone });
     await afterSignIn(result);
   } catch (e) {
     message($('#auth-msg'), e.name ? friendlyWebAuthnError(e) : e.message);
   } finally { busy(btn, false); }
-};
+}
+
+$('#btn-passkey').onclick = () => runPasskeySignIn($('#btn-passkey'), false);
+$('#btn-phone').onclick = () => runPasskeySignIn($('#btn-phone'), true);
 
 $('#form-signin').onsubmit = async ev => {
   ev.preventDefault();
@@ -734,29 +782,33 @@ $('#form-signup').onsubmit = async ev => {
     });
     $('#su-pass').value = '';
     await afterSignIn(result);
-    if (await platformAuthenticatorAvailable()) $('#btn-enroll').click();
+    if (await platformAuthenticatorAvailable()) await runEnrolment($('#btn-enroll'), 'platform');
   } catch (e) { message($('#auth-msg'), e.message); }
   finally { busy(btn, false); }
 };
 
-$('#btn-enroll').onclick = async () => {
-  const btn = $('#btn-enroll');
+async function runEnrolment(btn, attachment) {
   clearMessage($('#app-msg'));
-  if (!(await platformAuthenticatorAvailable())) {
+  if (attachment !== 'cross-platform' && !(await platformAuthenticatorAvailable())) {
     message($('#app-msg'),
       'This device has no fingerprint or face sensor available to the browser. ' +
-      'You can still sign in with your password.', 'warn');
+      'Try "Add a phone" instead, or keep using your password.', 'warn');
     return;
   }
-  busy(btn, true, 'Touch the sensor…');
+  busy(btn, true, attachment === 'cross-platform' ? 'Scan the QR code…' : 'Touch the sensor…');
   try {
-    await enrolFingerprint();
+    await enrolFingerprint(attachment);
     await refresh();
-    message($('#app-msg'), 'Fingerprint enrolled — you can sign in with a touch from now on.', 'ok');
+    message($('#app-msg'), attachment === 'cross-platform'
+      ? 'Phone enrolled — you can now sign in here by scanning a QR code.'
+      : 'Enrolled — you can sign in with ' + platformSensorName() + ' from now on.', 'ok');
   } catch (e) {
     message($('#app-msg'), e.name && e.name.endsWith('Error') ? friendlyWebAuthnError(e) : e.message);
   } finally { busy(btn, false); }
-};
+}
+
+$('#btn-enroll').onclick = () => runEnrolment($('#btn-enroll'), 'platform');
+$('#btn-enroll-phone').onclick = () => runEnrolment($('#btn-enroll-phone'), 'cross-platform');
 
 $('#form-pw').onsubmit = async ev => {
   ev.preventDefault();
@@ -796,14 +848,31 @@ $('#btn-refresh-audit').onclick = async () => {
 
 /* ---------------------------------------------------------------- boot -- */
 (async function boot() {
+  // Name the unlock the way this platform does, so the button matches the
+  // prompt the user is about to see.
+  const sensor = platformSensorName();
+  $('#btn-passkey').querySelector('span').textContent =
+    sensor === 'your fingerprint' ? 'Sign in with fingerprint' : 'Sign in with ' + sensor;
+  $('#passkey-hint').textContent =
+    'Uses ' + sensor + ' on this device — nothing to install.';
+
   if (!window.PublicKeyCredential) {
     $('#btn-passkey').disabled = true;
+    $('#btn-phone').classList.add('hidden');
     message($('#auth-msg'),
       'This browser does not support passkeys. Use your email and password.', 'warn');
   } else if (!(await platformAuthenticatorAvailable())) {
+    $('#btn-passkey').classList.add('hidden');
+    $('#passkey-hint').classList.add('hidden');
     message($('#auth-msg'),
-      'No fingerprint or face sensor detected on this device — you can still ' +
-      'use a passkey from your phone, or sign in with a password.', 'warn');
+      'No fingerprint or face sensor on this device. You can still sign in by ' +
+      'scanning a QR code with your phone, or with your password.', 'warn');
+  }
+
+  // Service worker: makes the page installable and lets it open offline
+  // (it will still need the network to actually sign in).
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => { /* not hosted — fine */ });
   }
 
   if (state.token) {
@@ -821,7 +890,7 @@ $('#btn-refresh-audit').onclick = async () => {
         PublicKeyCredential.isConditionalMediationAvailable &&
         await PublicKeyCredential.isConditionalMediationAvailable() &&
         !state.token) {
-      const result = await signInWithFingerprint('', 'conditional');
+      const result = await signInWithFingerprint('', { mediation: 'conditional' });
       await afterSignIn(result);
     }
   } catch (e) { /* the user ignored the autofill prompt — nothing to do */ }

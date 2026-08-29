@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Station — Discovery Samal</title>
+<link rel="manifest" href="station.webmanifest">
+<meta name="theme-color" content="#0f1418">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Station">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+  /* A station screen lives in a guardhouse or a serving line: high contrast,
+     large targets, one colour per outcome, readable from arm's length. */
+  :root {
+    --bg: #0f1418;
+    --panel: #171e24;
+    --panel-2: #1e262d;
+    --line: #2b353d;
+    --text: #eef3f6;
+    --muted: #93a3ad;
+    --accent: #38a3f5;
+    --in: #29a35a;
+    --in-bg: #10281b;
+    --out: #d08a1e;
+    --out-bg: #2a2110;
+    --bad: #d94f45;
+    --bad-bg: #2c1614;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+             env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  button, input, select { font: inherit; color: inherit; }
+  button {
+    cursor: pointer; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--panel-2); color: var(--text); padding: 12px 16px;
+    font-weight: 600; min-height: 48px;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); border-color: transparent; color: #06121c; }
+  button.ghost { background: transparent; }
+  button.big { font-size: 18px; padding: 18px 20px; min-height: 64px; }
+  input[type=text], input[type=email], input[type=password], select {
+    width: 100%; padding: 12px 14px; background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 10px; outline: none; min-height: 48px;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+  .hidden { display: none !important; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .grow { flex: 1 1 auto; }
+
+  /* ---- shell ---- */
+  .shell { display: flex; flex-direction: column; min-height: 100dvh; }
+  header {
+    display: flex; align-items: center; gap: 14px; padding: 12px 16px;
+    border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap;
+  }
+  .brand { font-weight: 700; letter-spacing: -.01em; }
+  .brand small { display: block; font-weight: 500; color: var(--muted); font-size: 12px; }
+  .modes { display: flex; gap: 4px; background: var(--panel-2); padding: 4px; border-radius: 10px; }
+  .modes button { border: none; background: transparent; min-height: 38px; padding: 8px 14px; color: var(--muted); }
+  .modes button[aria-selected=true] { background: var(--panel); color: var(--text); }
+  .spacer { flex: 1 1 auto; }
+  .chip {
+    font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 999px;
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--muted);
+    white-space: nowrap;
+  }
+  .chip.warn { background: var(--out-bg); color: var(--out); border-color: transparent; }
+  .chip.bad { background: var(--bad-bg); color: var(--bad); border-color: transparent; }
+
+  main { flex: 1 1 auto; padding: 16px; display: grid; gap: 16px;
+         grid-template-columns: minmax(320px, 1fr) minmax(300px, 420px); align-items: start; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; }
+  .card h2 { margin: 0 0 12px; font-size: 15px; letter-spacing: .02em; text-transform: uppercase; color: var(--muted); }
+
+  /* ---- scanner ---- */
+  /* The result card must stay on screen without scrolling — a guard reading a
+     verdict is the whole point of this screen, so the viewfinder is capped. */
+  .scanwrap {
+    position: relative; border-radius: 12px; overflow: hidden; background: #000;
+    aspect-ratio: 4/3; max-height: min(34vh, 300px); width: auto; max-width: 100%;
+    margin: 0 auto;
+  }
+  .scanwrap video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .scanwrap .reticle {
+    position: absolute; inset: 18% 14%; border: 3px solid rgba(255,255,255,.7);
+    border-radius: 14px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.35);
+  }
+  .scanwrap .placeholder {
+    position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
+    color: var(--muted); padding: 24px; font-size: 14px;
+  }
+
+  /* ---- result ---- */
+  .result { border-radius: var(--radius); padding: 22px; border: 1px solid var(--line); background: var(--panel); }
+  .result.in { background: var(--in-bg); border-color: var(--in); }
+  .result.out { background: var(--out-bg); border-color: var(--out); }
+  .result.bad { background: var(--bad-bg); border-color: var(--bad); }
+  .result .verdict { font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+  .result.in .verdict { color: var(--in); }
+  .result.out .verdict { color: var(--out); }
+  .result.bad .verdict { color: var(--bad); }
+  .result .who { font-size: clamp(24px, 4vw, 34px); font-weight: 700; letter-spacing: -.02em; margin: 6px 0 2px; }
+  .result .org { color: var(--muted); }
+  .result .detail { margin-top: 10px; font-size: 15px; }
+  .result .warn { margin-top: 10px; color: var(--out); font-size: 14px; }
+
+  .pill { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 3px 9px;
+          border-radius: 999px; text-transform: uppercase; letter-spacing: .05em; }
+  .pill.employee { background: #14304a; color: #74c0ff; }
+  .pill.ojt { background: #123a33; color: #6fd6b6; }
+  .pill.contractor { background: #3a2a12; color: #eab765; }
+  .pill.visitor { background: #33203a; color: #d29bea; }
+
+  /* ---- lists ---- */
+  .list { display: flex; flex-direction: column; }
+  .list .item { display: flex; align-items: center; gap: 12px; padding: 11px 0;
+                border-bottom: 1px solid var(--line); }
+  .list .item:last-child { border-bottom: none; }
+  .list .item b { font-weight: 600; }
+  .list .item .meta { color: var(--muted); font-size: 13px; }
+  .dir { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px; }
+  .dir.in { background: var(--in-bg); color: var(--in); }
+  .dir.out { background: var(--out-bg); color: var(--out); }
+  .empty { color: var(--muted); text-align: center; padding: 18px 0; font-size: 14px; }
+
+  .stat { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .stat:last-child { border-bottom: none; }
+  .stat b { font-variant-numeric: tabular-nums; }
+
+  dialog {
+    border: 1px solid var(--line); background: var(--panel); color: var(--text);
+    border-radius: var(--radius); padding: 22px; width: min(560px, 92vw);
+  }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  .field { margin-bottom: 12px; }
+  .grid2 { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+
+  .signin { min-height: 100dvh; display: grid; place-items: center; padding: 20px; }
+  .signin .card { width: min(420px, 100%); }
+  .msg { padding: 11px 13px; border-radius: 9px; font-size: 14px; margin-bottom: 12px; display: none; }
+  .msg.show { display: block; }
+  .msg.err { background: var(--bad-bg); color: var(--bad); }
+  .msg.ok { background: var(--in-bg); color: var(--in); }
+  .msg.warn { background: var(--out-bg); color: var(--out); }
+  .spin { width: 15px; height: 15px; border: 2px solid currentColor; border-right-color: transparent;
+          border-radius: 50%; display: inline-block; animation: sp .7s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+</style>
+</head>
+<body>
+
+<!-- ===================================================== SIGN IN ======== -->
+<div id="view-signin" class="signin">
+  <div class="card">
+    <div class="brand" style="margin-bottom:16px">Station sign-in<small id="site-name">Discovery Samal</small></div>
+    <div id="signin-msg" class="msg"></div>
+    <button id="btn-passkey" class="primary big" style="width:100%;margin-bottom:12px">
+      Sign in with fingerprint
+    </button>
+    <div class="field"><label for="si-email">Email</label><input id="si-email" type="email" autocomplete="username"></div>
+    <div class="field"><label for="si-pass">Password</label><input id="si-pass" type="password" autocomplete="current-password"></div>
+    <button id="btn-signin" style="width:100%">Sign in with password</button>
+  </div>
+</div>
+
+<!-- ===================================================== STATION ======== -->
+<div id="view-station" class="shell hidden">
+  <header>
+    <div class="brand">Station<small id="who">—</small></div>
+    <div class="modes" id="modes">
+      <button id="mode-gate" aria-selected="true">Gate</button>
+      <button id="mode-meal" aria-selected="false">Cafeteria</button>
+    </div>
+    <div class="spacer"></div>
+    <span class="chip" id="chip-clock">—</span>
+    <span class="chip hidden" id="chip-queue">0 queued</span>
+    <span class="chip" id="chip-net">online</span>
+    <button class="ghost" id="btn-signout" style="min-height:38px;padding:8px 12px">Sign out</button>
+  </header>
+
+  <main>
+    <!-- left: scanner + result -->
+    <div style="display:grid;gap:16px">
+      <div class="card">
+        <h2 id="scan-title">Scan a badge</h2>
+
+        <div class="row" style="margin-bottom:12px" id="gate-directions">
+          <button class="grow" data-dir="auto" aria-selected="true">Auto</button>
+          <button class="grow" data-dir="in">Entry</button>
+          <button class="grow" data-dir="out">Exit</button>
+        </div>
+
+        <div class="scanwrap" id="scanwrap">
+          <video id="video" playsinline muted></video>
+          <div class="reticle hidden" id="reticle"></div>
+          <div class="placeholder" id="scan-placeholder">
+            Camera off — tap “Use camera”, tap an RFID card, or search by name.
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:12px">
+          <button class="grow" id="btn-camera">Use camera</button>
+          <button class="grow" id="btn-manual">Search by name</button>
+          <button class="grow" id="btn-guest">Walk-up visitor</button>
+        </div>
+        <p style="color:var(--muted);font-size:12.5px;margin:10px 0 0" id="rfid-hint">
+          An RFID/NFC reader works with no setup — just tap a card while this screen is open.
+        </p>
+      </div>
+
+      <div class="result" id="result">
+        <div class="verdict" id="r-verdict">Ready</div>
+        <div class="who" id="r-who">Waiting for a scan</div>
+        <div class="org" id="r-org"></div>
+        <div class="detail" id="r-detail"></div>
+        <div class="warn" id="r-warn"></div>
+      </div>
+    </div>
+
+    <!-- right: counters + recent -->
+    <div style="display:grid;gap:16px">
+      <div class="card" id="panel-counts">
+        <h2 id="counts-title">On site now</h2>
+        <div id="counts"></div>
+      </div>
+      <div class="card">
+        <h2>Recent</h2>
+        <div class="list" id="recent"><div class="empty">Nothing yet today.</div></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ===================================================== DIALOGS ======== -->
+<dialog id="dlg-manual">
+  <h3 style="margin:0 0 12px">Search by name</h3>
+  <input id="q" type="text" placeholder="Name, badge number or company" autocomplete="off">
+  <div class="list" id="q-results" style="margin-top:12px"><div class="empty">Type at least two letters.</div></div>
+  <div class="row" style="margin-top:16px;justify-content:flex-end">
+    <button id="q-close" class="ghost">Close</button>
+  </div>
+</dialog>
+
+<dialog id="dlg-guest">
+  <h3 style="margin:0 0 4px">Walk-up visitor</h3>
+  <p style="color:var(--muted);font-size:13.5px;margin:0 0 14px">
+    This raises a request with Security and the department they are visiting.
+    They are <b>not</b> admitted now — their QR is emailed once both approve.
+  </p>
+  <div id="guest-msg" class="msg"></div>
+  <div class="grid2">
+    <div class="field"><label for="g-name">Full name *</label><input id="g-name" type="text"></div>
+    <div class="field"><label for="g-company">Company *</label><input id="g-company" type="text"></div>
+    <div class="field"><label for="g-email">Email *</label><input id="g-email" type="email" placeholder="Where the QR is sent"></div>
+    <div class="field"><label for="g-dept">Department visiting *</label><select id="g-dept"></select></div>
+    <div class="field"><label for="g-host">Person they are visiting</label><input id="g-host" type="text"></div>
+    <div class="field"><label for="g-purpose">Purpose</label><input id="g-purpose" type="text"></div>
+    <div class="field"><label for="g-idtype">ID presented</label><input id="g-idtype" type="text" placeholder="Driver's licence"></div>
+    <div class="field"><label for="g-idnum">ID number</label><input id="g-idnum" type="text"></div>
+    <div class="field"><label for="g-plate">Vehicle plate</label><input id="g-plate" type="text"></div>
+  </div>
+  <div class="row" style="margin-top:8px;justify-content:flex-end">
+    <button id="g-cancel" class="ghost">Cancel</button>
+    <button id="g-save" class="primary">Send for approval</button>
+  </div>
+</dialog>
+
+<script src="vendor/jsQR.js"></script>
+<script>
+/* ==========================================================================
+ *  CONFIGURE ME — the /exec URL of your Apps Script deployment.
+ * ========================================================================== */
+const API_URL = 'PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE';
+
+const $ = s => document.querySelector(s);
+const TOKEN_KEY = 'ds-station.token';
+const QUEUE_KEY = 'ds-station.queue';
+const MODE_KEY  = 'ds-station.mode';
+
+let state = {
+  token: localStorage.getItem(TOKEN_KEY) || null,
+  user: null,
+  mode: localStorage.getItem(MODE_KEY) || 'gate',
+  direction: 'auto',
+  scanning: false,
+  lastCode: '',
+  lastCodeAt: 0,
+  busy: false,
+  departments: []
+};
+
+/* ------------------------------------------------------------- transport - */
+class Offline extends Error {}
+
+async function api(action, params = {}) {
+  if (API_URL.startsWith('PASTE_')) throw new Error('Set API_URL at the top of station.html.');
+  const body = Object.assign({ action, userAgent: navigator.userAgent }, params);
+  if (state.token && !('token' in params)) body.token = state.token;
+
+  let res;
+  try {
+    res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body),
+      redirect: 'follow'
+    });
+  } catch (e) {
+    throw new Offline('No connection to the server.');
+  }
+  const text = await res.text();
+  let json;
+  try { json = JSON.parse(text); }
+  catch (e) { throw new Offline('The server did not return JSON.'); }
+  if (!json.ok) {
+    const err = new Error(json.error || 'Request failed.');
+    err.status = json.status;
+    throw err;
+  }
+  return json;
+}
+
+/* The queue exists so a dropped connection at the gate never loses a pass.
+   Only network failures are queued — a refusal from the server is a real
+   answer and must be shown to the guard, not retried. */
+const queue = {
+  read() { try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); } catch (e) { return []; } },
+  write(items) { localStorage.setItem(QUEUE_KEY, JSON.stringify(items)); paintQueue(); },
+  add(item) { const q = this.read(); q.push(item); this.write(q); },
+  get size() { return this.read().length; }
+};
+
+function paintQueue() {
+  const n = queue.size;
+  const chip = $('#chip-queue');
+  chip.classList.toggle('hidden', n === 0);
+  chip.textContent = n + (n === 1 ? ' waiting to send' : ' waiting to send');
+  chip.className = 'chip warn' + (n === 0 ? ' hidden' : '');
+}
+
+function paintNet() {
+  const chip = $('#chip-net');
+  const on = navigator.onLine;
+  chip.textContent = on ? 'online' : 'offline — still recording';
+  chip.className = 'chip' + (on ? '' : ' bad');
+}
+
+async function flushQueue() {
+  if (!navigator.onLine || !state.token) return;
+  const items = queue.read();
+  if (!items.length) return;
+  const remaining = [];
+  for (const item of items) {
+    try {
+      await api(item.action, item.params);
+    } catch (e) {
+      if (e instanceof Offline) { remaining.push(item); }
+      // A server-side rejection of a queued event is dropped: it has already
+      // been judged, and retrying forever would never clear the queue.
+    }
+  }
+  queue.write(remaining);
+  if (!remaining.length) refreshPanels();
+}
+
+/** Send an event, falling back to the queue when the network is down. */
+async function submitEvent(action, params) {
+  try {
+    return await api(action, params);
+  } catch (e) {
+    if (e instanceof Offline) {
+      queue.add({ action, params, at: new Date().toISOString() });
+      return { ok: true, queued: true };
+    }
+    throw e;
+  }
+}
+
+/* ----------------------------------------------------------------- utils - */
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uuid = () => 'evt_' + (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '').slice(0, 20)
+  : Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
+const timeOf = iso => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const money = (n, sym) => (sym || '') + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function message(el, text, kind = 'err') {
+  el.textContent = text;
+  el.className = 'msg show ' + kind;
+}
+function clearMessage(el) { el.className = 'msg'; }
+
+function beep(ok) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.frequency.value = ok ? 880 : 220;
+    gain.gain.value = 0.05;
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + (ok ? 0.09 : 0.28));
+    setTimeout(() => ctx.close(), 500);
+  } catch (e) { /* audio is a nicety, never a requirement */ }
+}
+
+/* ---------------------------------------------------------------- result - */
+function showResult(kind, verdict, who, org, detail, warn) {
+  const box = $('#result');
+  box.className = 'result' + (kind ? ' ' + kind : '');
+  $('#r-verdict').textContent = verdict;
+  $('#r-who').textContent = who;
+  $('#r-org').innerHTML = org || '';
+  $('#r-detail').textContent = detail || '';
+  $('#r-warn').textContent = warn || '';
+}
+
+function personLine(p) {
+  return '<span class="pill ' + esc(p.personType) + '">' + esc(p.typeLabel || p.personType) + '</span> ' +
+         esc(p.org || '') + (p.badgeSerial ? ' · ' + esc(p.badgeSerial) : '');
+}
+
+/* ------------------------------------------------------------ the action - */
+async function handleIdentifier(identifier) {
+  if (state.busy) return;
+  state.busy = true;
+  try {
+    if (state.mode === 'gate') await doGate(identifier);
+    else await doMeal(identifier);
+  } catch (e) {
+    beep(false);
+    showResult('bad', 'Refused',
+      state.mode === 'gate' ? 'Cannot pass' : 'Cannot be served', '', e.message);
+  } finally {
+    state.busy = false;
+    refreshPanels();
+  }
+}
+
+async function doGate(identifier) {
+  const r = await submitEvent('gate.pass', {
+    eventId: uuid(), identifier, direction: state.direction, gate: 'main'
+  });
+
+  if (r.queued) {
+    beep(true);
+    showResult('in', 'Saved offline', 'Recorded',
+      '', 'No connection — this pass is queued and will send itself.');
+    return;
+  }
+  if (r.duplicate) { showResult('', 'Already recorded', 'Duplicate scan', '', ''); return; }
+  if (r.noop) {
+    beep(false);
+    showResult('bad', 'Nothing to do', r.person.fullName, personLine(r.person), r.message);
+    return;
+  }
+  beep(true);
+  showResult(r.direction, r.direction === 'in' ? 'Entry' : 'Exit',
+    r.person.fullName, personLine(r.person),
+    r.direction === 'in' ? 'Signed in at ' + timeOf(r.at)
+      : 'Signed out after ' + r.hoursOnSite + ' h');
+}
+
+async function doMeal(identifier) {
+  const r = await submitEvent('meal.claim', {
+    eventId: uuid(), identifier, station: 'cafeteria'
+  });
+
+  if (r.queued) {
+    beep(true);
+    showResult('in', 'Saved offline', 'Recorded', '', 'No connection — queued.');
+    return;
+  }
+  if (r.duplicate) { showResult('', 'Already recorded', 'Duplicate scan', '', ''); return; }
+  if (r.rejected) {
+    beep(false);
+    showResult('bad', 'Already taken', r.person.fullName, personLine(r.person), r.message);
+    return;
+  }
+  beep(true);
+  const nth = r.takenToday === 2 ? ' · 2nd meal today' : '';
+  const warn = [];
+  if (r.outsideWindow) warn.push('Outside the normal service window — flagged in the log.');
+  if (r.entitlement && r.entitlement.overtime) {
+    warn.push('On overtime: ' + r.entitlement.hoursToday + ' h on site.');
+  }
+  showResult('in', r.period.label, r.person.fullName, personLine(r.person),
+    'Recorded at ' + timeOf(r.at) + nth, warn.join(' '));
+}
+
+/* --------------------------------------------------------------- capture - */
+/* RFID and barcode readers present themselves as keyboards: a fast burst of
+   characters ending in Enter. We watch for that shape rather than asking the
+   user to focus a field. */
+let wedge = { buffer: '', last: 0 };
+document.addEventListener('keydown', ev => {
+  if ($('#view-station').classList.contains('hidden')) return;
+  const tag = (document.activeElement && document.activeElement.tagName) || '';
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+  const now = Date.now();
+  if (now - wedge.last > 120) wedge.buffer = '';
+  wedge.last = now;
+
+  if (ev.key === 'Enter') {
+    const code = wedge.buffer.trim();
+    wedge.buffer = '';
+    if (code.length >= 4) {
+      ev.preventDefault();
+      onCode(code, 'card');
+    }
+    return;
+  }
+  if (ev.key.length === 1) wedge.buffer += ev.key;
+});
+
+/** One entry point for anything scanned, whatever produced it. */
+function onCode(code, source) {
+  const now = Date.now();
+  if (code === state.lastCode && now - state.lastCodeAt < 3000) return;   // debounce
+  state.lastCode = code; state.lastCodeAt = now;
+
+  // A printed badge carries DS1.<serial>.<sig>; a phone pass carries
+  // DS2.<serial>.<window>.<sig> and is only good for about a minute. Anything
+  // else off a reader is treated as a card number.
+  let identifier;
+  if (/^DS1\./.test(code)) identifier = { badgeToken: code };
+  else if (/^DS2\./.test(code)) identifier = { passCode: code };
+  else identifier = { cardId: code };
+  handleIdentifier(identifier);
+}
+
+/* ---------------------------------------------------------------- camera - */
+let stream = null, detector = null, scanTimer = null;
+
+async function startCamera() {
+  if (state.scanning) { stopCamera(); return; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 } }, audio: false
+    });
+  } catch (e) {
+    showResult('bad', 'No camera', 'Camera unavailable', '',
+      'Allow camera access, or use an RFID reader / name search instead.');
+    return;
+  }
+  const video = $('#video');
+  video.srcObject = stream;
+  await video.play();
+  $('#scan-placeholder').classList.add('hidden');
+  $('#reticle').classList.remove('hidden');
+  $('#btn-camera').textContent = 'Stop camera';
+  state.scanning = true;
+
+  if ('BarcodeDetector' in window && !detector) {
+    try { detector = new BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { detector = null; }
+  }
+  const canvas = document.createElement('canvas');
+  const cx = canvas.getContext('2d', { willReadFrequently: true });
+
+  scanTimer = setInterval(async () => {
+    if (!state.scanning || video.readyState < 2) return;
+    try {
+      if (detector) {
+        const found = await detector.detect(video);
+        if (found.length) onCode(found[0].rawValue, 'qr');
+        return;
+      }
+      if (typeof jsQR !== 'function') return;
+      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+      if (!canvas.width) return;
+      cx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const img = cx.getImageData(0, 0, canvas.width, canvas.height);
+      const hit = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+      if (hit && hit.data) onCode(hit.data, 'qr');
+    } catch (e) { /* a dropped frame is not worth reporting */ }
+  }, 220);
+}
+
+function stopCamera() {
+  state.scanning = false;
+  if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  $('#video').srcObject = null;
+  $('#scan-placeholder').classList.remove('hidden');
+  $('#reticle').classList.add('hidden');
+  $('#btn-camera').textContent = 'Use camera';
+}
+
+/* ---------------------------------------------------------------- panels - */
+async function refreshPanels() {
+  try {
+    if (state.mode === 'gate') {
+      const [roll, recent] = await Promise.all([
+        api('gate.onsite'), api('gate.recent', { limit: 12 })
+      ]);
+      $('#counts-title').textContent = 'On site now';
+      $('#counts').innerHTML =
+        stat('Total inside', roll.total) +
+        stat('Employees', roll.counts.employee || 0) +
+        stat('OJT', roll.counts.ojt || 0) +
+        stat('Contractors', roll.counts.contractor || 0) +
+        stat('Visitors', roll.counts.visitor || 0) +
+        (roll.overdue ? stat('Overdue', roll.overdue) : '');
+      $('#recent').innerHTML = recent.events.length ? recent.events.map(e => `
+        <div class="item">
+          <span class="dir ${esc(e.direction)}">${e.direction === 'in' ? 'IN' : 'OUT'}</span>
+          <div class="grow"><b>${esc(e.fullName)}</b>
+            <div class="meta">${esc(e.org || '')} · ${timeOf(e.at)}</div></div>
+        </div>`).join('') : '<div class="empty">Nothing yet today.</div>';
+    } else {
+      const t = await api('meal.today');
+      $('#counts-title').textContent = 'Served today';
+      $('#counts').innerHTML =
+        stat('Meals', t.meals) +
+        stat('Cost', money(t.cost, t.currencySymbol)) +
+        (t.currentPeriod ? stat('Now serving', t.currentPeriod.label) : stat('Now serving', 'Between services'));
+      $('#recent').innerHTML = t.recent.length ? t.recent.map(e => `
+        <div class="item">
+          <div class="grow"><b>${esc(e.fullName)}</b>
+            <div class="meta">${esc(e.org || '')} · ${esc(e.mealPeriod)} · ${timeOf(e.at)}</div></div>
+          <span class="meta">${money(e.unitCost, t.currencySymbol)}</span>
+        </div>`).join('') : '<div class="empty">Nothing served yet today.</div>';
+    }
+  } catch (e) { /* panels are informational; a blip must not break scanning */ }
+}
+
+const stat = (label, value) => `<div class="stat"><span>${esc(label)}</span><b>${esc(value)}</b></div>`;
+
+/* ------------------------------------------------------------------ mode - */
+function setMode(mode) {
+  state.mode = mode;
+  localStorage.setItem(MODE_KEY, mode);
+  $('#mode-gate').setAttribute('aria-selected', String(mode === 'gate'));
+  $('#mode-meal').setAttribute('aria-selected', String(mode === 'meal'));
+  $('#gate-directions').classList.toggle('hidden', mode !== 'gate');
+  $('#btn-guest').classList.toggle('hidden', mode !== 'gate');
+  $('#scan-title').textContent = mode === 'gate' ? 'Scan a badge' : 'Scan for a meal';
+  showResult('', 'Ready', mode === 'gate' ? 'Waiting for a scan' : 'Waiting for a meal card', '', '');
+  refreshPanels();
+}
+
+async function loadDepartments() {
+  try {
+    const r = await api('people.departments');
+    state.departments = r.departments || [];
+  } catch (e) { state.departments = []; }
+}
+
+function applyRoles() {
+  const roles = (state.user && state.user.roles) || [];
+  const can = r => roles.indexOf('admin') !== -1 || roles.indexOf(r) !== -1;
+  $('#mode-gate').classList.toggle('hidden', !can('guard'));
+  $('#mode-meal').classList.toggle('hidden', !can('cafeteria'));
+  if (!can('guard') && can('cafeteria')) setMode('meal');
+  else if (can('guard') && !can('cafeteria')) setMode('gate');
+  else setMode(state.mode);
+  $('#who').textContent = state.user.name + ' · ' + roles.join(', ');
+}
+
+/* --------------------------------------------------------------- sign in - */
+const b64uToBuf = s => {
+  const bin = atob((s + '='.repeat((4 - s.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+  const b = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
+  return b;
+};
+const bufToB64u = buf => {
+  const bytes = new Uint8Array(buf); let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+
+async function passkeySignIn() {
+  const { options } = await api('passkey.loginBegin', { email: $('#si-email').value.trim(), token: '' });
+  const assertion = await navigator.credentials.get({
+    publicKey: {
+      challenge: b64uToBuf(options.challenge),
+      rpId: options.rpId,
+      timeout: options.timeout,
+      userVerification: options.userVerification,
+      allowCredentials: (options.allowCredentials || []).map(c => ({
+        type: c.type, id: b64uToBuf(c.id), transports: c.transports
+      }))
+    }
+  });
+  const r = assertion.response;
+  return api('passkey.loginFinish', {
+    token: '',
+    assertion: {
+      id: assertion.id, rawId: bufToB64u(assertion.rawId), type: assertion.type,
+      response: {
+        clientDataJSON: bufToB64u(r.clientDataJSON),
+        authenticatorData: bufToB64u(r.authenticatorData),
+        signature: bufToB64u(r.signature),
+        userHandle: r.userHandle ? bufToB64u(r.userHandle) : null
+      }
+    }
+  });
+}
+
+async function afterSignIn(result) {
+  state.token = result.token;
+  state.user = result.user;
+  localStorage.setItem(TOKEN_KEY, result.token);
+  $('#view-signin').classList.add('hidden');
+  $('#view-station').classList.remove('hidden');
+  applyRoles();
+  loadDepartments();
+  flushQueue();
+}
+
+function signOutLocal() {
+  stopCamera();
+  state.token = null; state.user = null;
+  localStorage.removeItem(TOKEN_KEY);
+  $('#view-station').classList.add('hidden');
+  $('#view-signin').classList.remove('hidden');
+}
+
+/* ---------------------------------------------------------------- wiring - */
+$('#btn-passkey').onclick = async () => {
+  clearMessage($('#signin-msg'));
+  try { await afterSignIn(await passkeySignIn()); }
+  catch (e) { message($('#signin-msg'), e.name === 'NotAllowedError' ? 'Cancelled or timed out.' : e.message); }
+};
+
+$('#btn-signin').onclick = async () => {
+  clearMessage($('#signin-msg'));
+  try {
+    await afterSignIn(await api('auth.login', {
+      token: '', email: $('#si-email').value.trim(), password: $('#si-pass').value
+    }));
+    $('#si-pass').value = '';
+  } catch (e) { message($('#signin-msg'), e.message); }
+};
+
+$('#btn-signout').onclick = async () => {
+  try { await api('auth.logout'); } catch (e) { /* sign out locally regardless */ }
+  signOutLocal();
+};
+
+$('#mode-gate').onclick = () => setMode('gate');
+$('#mode-meal').onclick = () => setMode('meal');
+
+$('#gate-directions').addEventListener('click', ev => {
+  const btn = ev.target.closest('button[data-dir]');
+  if (!btn) return;
+  state.direction = btn.dataset.dir;
+  [...$('#gate-directions').querySelectorAll('button')].forEach(b =>
+    b.setAttribute('aria-selected', String(b === btn)));
+});
+
+$('#btn-camera').onclick = startCamera;
+
+/* ---- manual search ---- */
+let searchTimer = null;
+$('#btn-manual').onclick = () => {
+  $('#q').value = '';
+  $('#q-results').innerHTML = '<div class="empty">Type at least two letters.</div>';
+  $('#dlg-manual').showModal();
+  setTimeout(() => $('#q').focus(), 50);
+};
+$('#q-close').onclick = () => $('#dlg-manual').close();
+$('#q').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    const query = $('#q').value.trim();
+    if (query.length < 2) {
+      $('#q-results').innerHTML = '<div class="empty">Type at least two letters.</div>';
+      return;
+    }
+    try {
+      const { results } = await api('people.search', { query });
+      $('#q-results').innerHTML = results.length ? results.map(p => `
+        <div class="item">
+          <div class="grow"><b>${esc(p.fullName)}</b>
+            <div class="meta">${esc(p.personType)} · ${esc(p.org || '')}${p.badgeSerial ? ' · ' + esc(p.badgeSerial) : ''}</div></div>
+          <button class="primary" data-pick="${esc(p.id)}" style="min-height:40px;padding:8px 14px">Select</button>
+        </div>`).join('') : '<div class="empty">Nobody matches that.</div>';
+    } catch (e) {
+      $('#q-results').innerHTML = '<div class="empty">' + esc(e.message) + '</div>';
+    }
+  }, 220);
+});
+$('#q-results').addEventListener('click', ev => {
+  const btn = ev.target.closest('[data-pick]');
+  if (!btn) return;
+  $('#dlg-manual').close();
+  handleIdentifier({ personId: btn.dataset.pick });
+});
+
+/* ---- walk-up guest ---- */
+$('#btn-guest').onclick = () => {
+  ['g-name', 'g-company', 'g-email', 'g-host', 'g-purpose', 'g-idtype', 'g-idnum', 'g-plate']
+    .forEach(id => { $('#' + id).value = ''; });
+  const sel = $('#g-dept');
+  sel.innerHTML = state.departments.length
+    ? '<option value="">Choose a department…</option>' +
+      state.departments.map(d => `<option value="${esc(d.name)}">${esc(d.name)}</option>`).join('')
+    : '<option value="">No departments set up — tell the office</option>';
+  clearMessage($('#guest-msg'));
+  $('#dlg-guest').showModal();
+  setTimeout(() => $('#g-name').focus(), 50);
+};
+$('#g-cancel').onclick = () => $('#dlg-guest').close();
+$('#g-save').onclick = async () => {
+  const name = $('#g-name').value.trim();
+  const company = $('#g-company').value.trim();
+  const email = $('#g-email').value.trim();
+  const department = $('#g-dept').value;
+  if (name.length < 2 || !company) {
+    message($('#guest-msg'), 'Name and company are both required.');
+    return;
+  }
+  if (!email) {
+    message($('#guest-msg'), 'An email address is required — that is where their QR is sent.');
+    return;
+  }
+  if (!department) {
+    message($('#guest-msg'), 'Choose the department they are visiting. That head has to approve.');
+    return;
+  }
+  const btn = $('#g-save');
+  btn.disabled = true;
+  try {
+    const r = await api('gate.requestAccess', {
+      eventId: uuid(), fullName: name, company, email, department,
+      hostName: $('#g-host').value.trim(), purpose: $('#g-purpose').value.trim(),
+      idType: $('#g-idtype').value.trim(), idNumber: $('#g-idnum').value.trim(),
+      vehiclePlate: $('#g-plate').value.trim(), gate: 'main'
+    });
+    $('#dlg-guest').close();
+    const blocked = r.problems && r.problems.length;
+    beep(!blocked);
+    showResult(blocked ? 'bad' : 'out', blocked ? 'Not sent' : 'Waiting for approval',
+      r.person.fullName, personLine(r.person), r.message,
+      blocked ? '' : 'They cannot enter until Security and the department both approve.');
+    refreshPanels();
+  } catch (e) {
+    message($('#guest-msg'), e.message);
+  } finally { btn.disabled = false; }
+};
+
+/* ---- clock, network, queue ---- */
+setInterval(() => {
+  $('#chip-clock').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}, 1000);
+window.addEventListener('online', () => { paintNet(); flushQueue(); });
+window.addEventListener('offline', paintNet);
+setInterval(flushQueue, 10000);
+setInterval(() => { if (state.token) refreshPanels(); }, 30000);
+
+/* ------------------------------------------------------------------ boot - */
+(async function boot() {
+  paintNet(); paintQueue();
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  if (!state.token) return;
+  try {
+    const me = await api('auth.me');
+    state.user = me.user;
+    $('#view-signin').classList.add('hidden');
+    $('#view-station').classList.remove('hidden');
+    applyRoles();
+    loadDepartments();
+    flushQueue();
+  } catch (e) {
+    if (!(e instanceof Offline)) signOutLocal();
+  }
+})();
+</script>
+</body>
+</html>
