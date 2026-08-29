@@ -169,7 +169,7 @@
     <h1 id="auth-title">Sign in</h1>
     <p class="sub" id="auth-sub">Use your fingerprint, or your email and password.</p>
 
-    <div class="tabs" role="tablist">
+    <div class="tabs" role="tablist" id="tabs">
       <button role="tab" id="tab-signin" aria-selected="true">Sign in</button>
       <button role="tab" id="tab-signup" aria-selected="false">Create account</button>
     </div>
@@ -204,6 +204,62 @@
         <input id="si-pass" type="password" autocomplete="current-password" required>
       </div>
       <button type="submit" class="full" id="btn-signin">Sign in</button>
+      <p class="hint" style="text-align:center;margin:12px 0 0">
+        <a href="#" id="link-forgot">Forgot your password?</a>
+      </p>
+    </form>
+
+    <!-- forgot password -->
+    <form id="form-forgot" class="hidden">
+      <p class="hint" style="margin:0 0 14px">
+        Put in your work email and we will send you a link to set a new password.
+        It works once and lasts an hour.
+      </p>
+      <div class="field">
+        <label for="fp-email">Email</label>
+        <input id="fp-email" type="email" autocomplete="username" required>
+      </div>
+      <button type="submit" class="primary full" id="btn-forgot">Email me a code</button>
+      <p class="hint" style="text-align:center;margin:12px 0 0">
+        <a href="#" id="link-back-signin">Back to sign in</a>
+      </p>
+    </form>
+
+    <!-- the emailed code -->
+    <form id="form-code" class="hidden">
+      <p class="hint" style="margin:0 0 14px">
+        We sent a 6-digit code to <b id="code-sent-to"></b>. Type it in below —
+        it lasts 15 minutes.
+      </p>
+      <div class="field">
+        <label for="otp">Code from the email</label>
+        <input id="otp" type="text" inputmode="numeric" autocomplete="one-time-code"
+               maxlength="7" placeholder="123 456"
+               style="font:700 24px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;
+                      letter-spacing:.18em;text-align:center">
+      </div>
+      <button type="submit" class="primary full" id="btn-code">Check the code</button>
+      <p class="hint" style="text-align:center;margin:12px 0 0">
+        <a href="#" id="link-resend">Send another</a> ·
+        <a href="#" id="link-back-signin-2">Back to sign in</a>
+      </p>
+    </form>
+
+    <!-- choose the new password -->
+    <form id="form-newpw" class="hidden">
+      <p class="hint" style="margin:0 0 14px">
+        Code accepted. Choose a new password — at least 10 characters, with
+        letters and numbers.
+      </p>
+      <div class="field">
+        <label for="np1">New password</label>
+        <input id="np1" type="password" autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label for="np2">New password again</label>
+        <input id="np2" type="password" autocomplete="new-password">
+      </div>
+      <button type="submit" class="primary full" id="btn-newpw">Set my password</button>
     </form>
 
     <!-- sign up -->
@@ -279,8 +335,12 @@
       <div id="cred-list"></div>
     </div>
 
-    <div class="card panel">
+    <div class="card panel" id="card-pw">
       <h2>Change password</h2>
+      <div id="must-change" class="msg show warn hidden" style="margin:0 0 14px">
+        A manager gave you a temporary password. Choose your own now — it is the
+        one thing to do before anything else.
+      </div>
       <form id="form-pw">
         <div class="row">
           <div class="field" style="flex:1 1 220px">
@@ -552,6 +612,15 @@ function renderUser(data) {
     ? new Date(data.session.expiresAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
     : '–';
 
+  // Someone signing in on a temporary password issued by a manager. Say so
+  // where they will act on it, and put them in front of the field.
+  const mustChange = !!u.mustChangePassword;
+  $('#must-change').classList.toggle('hidden', !mustChange);
+  if (mustChange) {
+    $('#card-pw').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => $('#pw-current').focus(), 400);
+  }
+
   renderCredentials();
 }
 
@@ -720,6 +789,10 @@ function showSignInTab() {
   $('#tab-signup').setAttribute('aria-selected', 'false');
   $('#form-signin').classList.remove('hidden');
   $('#form-signup').classList.add('hidden');
+  $('#form-forgot').classList.add('hidden');
+  $('#form-code').classList.add('hidden');
+  $('#form-newpw').classList.add('hidden');
+  $('#tabs').classList.remove('hidden');
   $('#auth-title').textContent = 'Sign in';
   $('#auth-sub').textContent = 'Use your fingerprint, or your email and password.';
   clearMessage($('#auth-msg'));
@@ -731,9 +804,133 @@ $('#tab-signup').onclick = () => {
   $('#tab-signin').setAttribute('aria-selected', 'false');
   $('#form-signup').classList.remove('hidden');
   $('#form-signin').classList.add('hidden');
+  $('#form-forgot').classList.add('hidden');
+  $('#form-code').classList.add('hidden');
+  $('#form-newpw').classList.add('hidden');
+  $('#tabs').classList.remove('hidden');
   $('#auth-title').textContent = 'Create your account';
   $('#auth-sub').textContent = 'Set a password first — you can add your fingerprint straight after.';
   clearMessage($('#auth-msg'));
+};
+
+/* ------------------------------------------------------ forgot password -- */
+$('#link-forgot').onclick = (ev) => {
+  ev.preventDefault();
+  $('#form-signin').classList.add('hidden');
+  $('#form-signup').classList.add('hidden');
+  $('#form-code').classList.add('hidden');
+  $('#form-newpw').classList.add('hidden');
+  $('#form-forgot').classList.remove('hidden');
+  // The tab strip offers sign in and create account — neither is what they are
+  // doing — so it goes away rather than sitting there looking clickable.
+  $('#tabs').classList.add('hidden');
+  $('#auth-title').textContent = 'Forgotten password';
+  $('#auth-sub').textContent = 'We will email you a link to set a new one.';
+  $('#fp-email').value = $('#si-email').value.trim();
+  clearMessage($('#auth-msg'));
+  $('#fp-email').focus();
+};
+
+$('#link-back-signin').onclick = (ev) => { ev.preventDefault(); showSignInTab(); };
+
+/* The email carries a code and a link. This is the code half: the person is
+ * already looking at this page, so typing six digits back into it beats being
+ * bounced into a new browser tab. The link stays in the email for anyone who
+ * has since closed this. */
+let resetTicket = null;
+
+function showCodeStep(email) {
+  $('#form-forgot').classList.add('hidden');
+  $('#form-newpw').classList.add('hidden');
+  $('#form-code').classList.remove('hidden');
+  $('#code-sent-to').textContent = email;
+  $('#auth-title').textContent = 'Check your email';
+  $('#auth-sub').textContent = 'We sent you a 6-digit code.';
+  $('#otp').value = '';
+  $('#otp').focus();
+}
+
+async function sendResetCode(email, btn, resending) {
+  busy(btn, true, 'Sending…');
+  try {
+    await api('auth.requestReset', { email, token: '' });
+    // The same words whether or not that address has an account — the server
+    // will not say, and neither will this page. Which is also why the code
+    // screen appears either way.
+    showCodeStep(email);
+    message($('#auth-msg'),
+      (resending ? 'Another code is on its way to ' : 'If ') + email +
+      (resending ? '. The previous one no longer works.'
+                 : ' has an account here, a code is on its way. Check your junk folder ' +
+                   'if it does not arrive.'), 'ok');
+  } catch (e) {
+    message($('#auth-msg'), e.message);
+  } finally { busy(btn, false); }
+}
+
+$('#form-forgot').onsubmit = (ev) => {
+  ev.preventDefault();
+  const email = $('#fp-email').value.trim();
+  if (!email) { message($('#auth-msg'), 'Put in your email address first.'); return; }
+  sendResetCode(email, $('#btn-forgot'), false);
+};
+
+$('#link-resend').onclick = (ev) => {
+  ev.preventDefault();
+  sendResetCode($('#fp-email').value.trim(), $('#btn-code'), true);
+};
+$('#link-back-signin-2').onclick = (ev) => { ev.preventDefault(); showSignInTab(); };
+
+// Codes get pasted with spaces, and read aloud in threes. Accept any of it.
+$('#otp').addEventListener('input', () => {
+  const digits = $('#otp').value.replace(/[^0-9]/g, '').slice(0, 6);
+  $('#otp').value = digits.length > 3 ? digits.slice(0, 3) + ' ' + digits.slice(3) : digits;
+});
+
+$('#form-code').onsubmit = async (ev) => {
+  ev.preventDefault();
+  const btn = $('#btn-code');
+  const code = $('#otp').value.replace(/[^0-9]/g, '');
+  if (code.length !== 6) { message($('#auth-msg'), 'The code is six digits.'); return; }
+  busy(btn, true, 'Checking…');
+  try {
+    const r = await api('auth.verifyResetCode', {
+      email: $('#fp-email').value.trim(), code, token: ''
+    });
+    resetTicket = r.ticket;
+    $('#form-code').classList.add('hidden');
+    $('#form-newpw').classList.remove('hidden');
+    $('#auth-title').textContent = 'Choose a password';
+    $('#auth-sub').textContent = 'Almost done, ' + (r.name || '') + '.';
+    clearMessage($('#auth-msg'));
+    $('#np1').focus();
+  } catch (e) {
+    message($('#auth-msg'), e.message);
+    $('#otp').value = '';
+    $('#otp').focus();
+  } finally { busy(btn, false); }
+};
+
+$('#form-newpw').onsubmit = async (ev) => {
+  ev.preventDefault();
+  const btn = $('#btn-newpw');
+  const a = $('#np1').value, b = $('#np2').value;
+  if (a !== b) { message($('#auth-msg'), 'Those two passwords are not the same.'); return; }
+  if (!resetTicket) { message($('#auth-msg'), 'Start again — ask for a new code.'); return; }
+  busy(btn, true, 'Setting…');
+  try {
+    await api('auth.resetWithCode', { ticket: resetTicket, password: a, token: '' });
+    resetTicket = null;
+    $('#np1').value = ''; $('#np2').value = '';
+    showSignInTab();
+    $('#si-email').value = $('#fp-email').value.trim();
+    $('#si-pass').focus();
+    message($('#auth-msg'),
+      'Password changed. Sign in with it now — and once you are in, press ' +
+      '"Add this device" so you never need this again.', 'ok');
+  } catch (e) {
+    message($('#auth-msg'), e.message);
+  } finally { busy(btn, false); }
 };
 
 async function runPasskeySignIn(btn, forcePhone) {

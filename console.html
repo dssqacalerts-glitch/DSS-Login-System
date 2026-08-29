@@ -439,7 +439,7 @@
         <h2>Station accounts</h2>
         <p class="sub">Give each guard the <b>guard</b> role and each cafeteria attendant <b>cafeteria</b>. Managers get <b>manager</b>.</p>
         <div class="scroll"><table>
-          <thead><tr><th>Name</th><th>Email</th><th>Roles</th><th>Passkeys</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>Email</th><th>Roles</th><th>Passkeys</th><th></th><th>Locked out?</th></tr></thead>
           <tbody id="user-rows"></tbody>
         </table></div>
       </div>
@@ -448,6 +448,24 @@
 </div>
 
 <div class="tip" id="tip"></div>
+
+<dialog id="dlg-temp">
+  <h3>Temporary password</h3>
+  <p class="sub">
+    Read this to <b id="temp-who"></b> now. It is shown once and cannot be
+    recovered — if it gets lost, issue another. They will be made to choose
+    their own password as soon as they sign in.
+  </p>
+  <div style="background:var(--panel-2);border:1px solid var(--line);border-radius:10px;
+              padding:16px;text-align:center;margin:0 0 16px">
+    <code id="temp-pw" style="font-size:22px;font-weight:700;letter-spacing:.06em;
+          user-select:all;word-break:break-all"></code>
+  </div>
+  <div class="row" style="justify-content:flex-end;gap:8px">
+    <button class="small" id="temp-copy" type="button">Copy</button>
+    <button class="small primary" id="temp-close" type="button">Done</button>
+  </div>
+</dialog>
 
 <dialog id="dlg-person">
   <h3 id="dlg-person-title" style="margin:0 0 14px">Add person</h3>
@@ -983,6 +1001,10 @@ async function loadSettings() {
       <td><input class="u-roles" data-user="${esc(u.id)}" type="text" value="${esc((u.roles || []).join(','))}" style="max-width:230px"></td>
       <td class="num">${num(u.passkeyCount)}</td>
       <td><button class="small u-save" data-user="${esc(u.id)}">Save roles</button></td>
+      <td style="white-space:nowrap">
+        <button class="small u-mail" data-user="${esc(u.id)}" data-email="${esc(u.email)}">Email a reset link</button>
+        <button class="small u-temp" data-user="${esc(u.id)}" data-name="${esc(u.name || u.email)}">Temporary password</button>
+      </td>
     </tr>`).join('');
 }
 
@@ -1266,16 +1288,52 @@ $('#period-rows').addEventListener('click', async ev => {
 });
 
 $('#user-rows').addEventListener('click', async ev => {
-  const btn = ev.target.closest('.u-save');
+  const save = ev.target.closest('.u-save');
+  const mail = ev.target.closest('.u-mail');
+  const temp = ev.target.closest('.u-temp');
+  const btn = save || mail || temp;
   if (!btn) return;
-  const input = $('#user-rows .u-roles[data-user="' + btn.dataset.user + '"]');
   btn.disabled = true;
   try {
-    await api('admin.setRole', { userId: btn.dataset.user, role: input.value.trim() });
-    message($('#app-msg'), 'Roles updated.', 'ok');
+    if (save) {
+      const input = $('#user-rows .u-roles[data-user="' + save.dataset.user + '"]');
+      await api('admin.setRole', { userId: save.dataset.user, role: input.value.trim() });
+      message($('#app-msg'), 'Roles updated.', 'ok');
+
+    } else if (mail) {
+      await api('admin.sendReset', { userId: mail.dataset.user });
+      message($('#app-msg'),
+        'A reset link is on its way to ' + mail.dataset.email +
+        '. It works once and lasts an hour.', 'ok');
+
+    } else if (temp) {
+      // For the person who is locked out somewhere with no access to email.
+      // The password is shown once, here, and never again.
+      const r = await api('admin.setTemporaryPassword', { userId: temp.dataset.user });
+      showTempPassword(temp.dataset.name, r.temporaryPassword);
+    }
   } catch (e) { message($('#app-msg'), e.message); }
   finally { btn.disabled = false; }
 });
+
+/**
+ * Shown once and not stored anywhere legible. Read it out, then it is gone —
+ * reloading the console will not bring it back, which is the point.
+ */
+function showTempPassword(name, password) {
+  const dlg = $('#dlg-temp');
+  $('#temp-who').textContent = name;
+  $('#temp-pw').textContent = password;
+  dlg.showModal();
+}
+$('#temp-copy').onclick = async () => {
+  try {
+    await navigator.clipboard.writeText($('#temp-pw').textContent);
+    $('#temp-copy').textContent = 'Copied';
+    setTimeout(() => { $('#temp-copy').textContent = 'Copy'; }, 2000);
+  } catch (e) { /* a locked-down browser: they can still read it off the screen */ }
+};
+$('#temp-close').onclick = () => $('#dlg-temp').close();
 
 /* --------------------------------------------------------------- sign in - */
 const b64uToBuf = s => {
