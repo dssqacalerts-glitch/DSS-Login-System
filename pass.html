@@ -378,6 +378,24 @@ function busy(btn, on, label) {
 }
 
 /* --------------------------------------------------------- sign in ----- */
+/* One WebAuthn request at a time — see index.html for why. */
+let webauthnBusy = false;
+const PENDING_HELP =
+  'A fingerprint prompt is already open. Finish or cancel that one first — ' +
+  'if you cannot see it, check your other browser tabs.';
+async function oneAtATime(fn) {
+  if (webauthnBusy) { const e = new Error(PENDING_HELP); e.name = 'PendingError'; throw e; }
+  webauthnBusy = true;
+  try { return await fn(); } finally { webauthnBusy = false; }
+}
+function pendingAware(err) {
+  const m = (err && err.message) || '';
+  if ((err && err.name === 'PendingError') || /already pending|request is pending/i.test(m)) {
+    return PENDING_HELP;
+  }
+  return m || 'Fingerprint sign-in failed.';
+}
+
 async function signInWithFingerprint(email) {
   const { options } = await api('passkey.loginBegin', { email: email || '', token: '' });
   const publicKey = {
@@ -389,7 +407,7 @@ async function signInWithFingerprint(email) {
       type: c.type, id: b64uToBuf(c.id), transports: c.transports
     }))
   };
-  const assertion = await navigator.credentials.get({ publicKey });
+  const assertion = await oneAtATime(() => navigator.credentials.get({ publicKey }));
   if (!assertion) throw new Error('No assertion returned.');
   const r = assertion.response;
   return api('passkey.loginFinish', {
@@ -424,7 +442,7 @@ $('#btn-fp').addEventListener('click', async () => {
     message($('#auth-msg'),
       e.name === 'NotAllowedError'
         ? 'Cancelled, or this phone has no passkey for your account yet. Enrol it on the staff portal first.'
-        : e.message);
+        : pendingAware(e));
   } finally { busy(btn, false); }
 });
 

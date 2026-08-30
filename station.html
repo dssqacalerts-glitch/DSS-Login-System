@@ -684,9 +684,27 @@ const bufToB64u = buf => {
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 };
 
+/* One WebAuthn request at a time — see index.html for why. */
+let webauthnBusy = false;
+const PENDING_HELP =
+  'A fingerprint prompt is already open. Finish or cancel that one first — ' +
+  'if you cannot see it, check your other browser tabs.';
+async function oneAtATime(fn) {
+  if (webauthnBusy) { const e = new Error(PENDING_HELP); e.name = 'PendingError'; throw e; }
+  webauthnBusy = true;
+  try { return await fn(); } finally { webauthnBusy = false; }
+}
+function pendingAware(err) {
+  const m = (err && err.message) || '';
+  if ((err && err.name === 'PendingError') || /already pending|request is pending/i.test(m)) {
+    return PENDING_HELP;
+  }
+  return m || 'Fingerprint sign-in failed.';
+}
+
 async function passkeySignIn() {
   const { options } = await api('passkey.loginBegin', { email: $('#si-email').value.trim(), token: '' });
-  const assertion = await navigator.credentials.get({
+  const assertion = await oneAtATime(() => navigator.credentials.get({
     publicKey: {
       challenge: b64uToBuf(options.challenge),
       rpId: options.rpId,
@@ -696,7 +714,7 @@ async function passkeySignIn() {
         type: c.type, id: b64uToBuf(c.id), transports: c.transports
       }))
     }
-  });
+  }));
   const r = assertion.response;
   return api('passkey.loginFinish', {
     token: '',
@@ -735,7 +753,7 @@ function signOutLocal() {
 $('#btn-passkey').onclick = async () => {
   clearMessage($('#signin-msg'));
   try { await afterSignIn(await passkeySignIn()); }
-  catch (e) { message($('#signin-msg'), e.name === 'NotAllowedError' ? 'Cancelled or timed out.' : e.message); }
+  catch (e) { message($('#signin-msg'), e.name === 'NotAllowedError' ? 'Cancelled or timed out.' : pendingAware(e)); }
 };
 
 $('#btn-signin').onclick = async () => {

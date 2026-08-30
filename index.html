@@ -489,8 +489,33 @@ function deviceName() {
   return plat + ' · ' + browser;
 }
 
+/* The browser allows exactly one WebAuthn request at a time, for the whole
+ * browser — not the tab. A second one, from a double click or from this page
+ * being open twice, is rejected with "A request is already pending", which
+ * tells the person nothing they can act on. Hold the gate here so the common
+ * case never reaches the browser, and translate it when it does. */
+let webauthnBusy = false;
+const PENDING_HELP =
+  'A fingerprint prompt is already open. Finish or cancel that one first — ' +
+  'if you cannot see it, check your other browser tabs.';
+
+async function oneAtATime(fn) {
+  if (webauthnBusy) {
+    const e = new Error(PENDING_HELP);
+    e.name = 'PendingError';
+    throw e;
+  }
+  webauthnBusy = true;
+  try { return await fn(); }
+  finally { webauthnBusy = false; }
+}
+
 function friendlyWebAuthnError(err) {
   const n = err && err.name;
+  const m = (err && err.message) || '';
+  // Another tab holding the prompt: our own flag cannot see that, so match on
+  // what the browser actually said.
+  if (n === 'PendingError' || /already pending|request is pending/i.test(m)) return PENDING_HELP;
   if (n === 'NotAllowedError') return 'Cancelled, or the fingerprint prompt timed out.';
   if (n === 'InvalidStateError') return 'This device already has a passkey for your account.';
   if (n === 'SecurityError') return 'This page must be served over https on the domain configured as RP_ID.';
@@ -525,7 +550,7 @@ async function enrolFingerprint(attachment) {
       type: c.type, id: b64uToBuf(c.id)
     }))
   };
-  const cred = await navigator.credentials.create({ publicKey });
+  const cred = await oneAtATime(() => navigator.credentials.create({ publicKey }));
   if (!cred) throw new Error('No credential was created.');
 
   return api('passkey.registerFinish', {
@@ -563,7 +588,7 @@ async function signInWithFingerprint(email, opts = {}) {
   const request = { publicKey };
   if (mediation) request.mediation = mediation;
 
-  const assertion = await navigator.credentials.get(request);
+  const assertion = await oneAtATime(() => navigator.credentials.get(request));
   if (!assertion) throw new Error('No assertion returned.');
 
   const r = assertion.response;
@@ -979,17 +1004,26 @@ $('#form-signup').onsubmit = async ev => {
     });
     $('#su-pass').value = '';
     await afterSignIn(result);
-    if (await platformAuthenticatorAvailable()) await runEnrolment($('#btn-enroll'), 'platform');
+    if (await platformAuthenticatorAvailable()) {
+      await runEnrolment($('#btn-enroll'), 'platform', true);
+    }
   } catch (e) { message($('#auth-msg'), e.message); }
   finally { busy(btn, false); }
 };
 
-async function runEnrolment(btn, attachment) {
+/**
+ * @param {boolean} auto  true when this fired by itself straight after signup.
+ *   The account was created either way, so a failure here is a nudge, not an
+ *   alarm — a red banner on a page where nothing went wrong is its own bug.
+ */
+async function runEnrolment(btn, attachment, auto) {
   clearMessage($('#app-msg'));
   if (attachment !== 'cross-platform' && !(await platformAuthenticatorAvailable())) {
-    message($('#app-msg'),
-      'This device has no fingerprint or face sensor available to the browser. ' +
-      'Try "Add a phone" instead, or keep using your password.', 'warn');
+    if (!auto) {
+      message($('#app-msg'),
+        'This device has no fingerprint or face sensor available to the browser. ' +
+        'Try "Add a phone" instead, or keep using your password.', 'warn');
+    }
     return;
   }
   busy(btn, true, attachment === 'cross-platform' ? 'Scan the QR code…' : 'Touch the sensor…');
@@ -1000,7 +1034,12 @@ async function runEnrolment(btn, attachment) {
       ? 'Phone enrolled — you can now sign in here by scanning a QR code.'
       : 'Enrolled — you can sign in with ' + platformSensorName() + ' from now on.', 'ok');
   } catch (e) {
-    message($('#app-msg'), e.name && e.name.endsWith('Error') ? friendlyWebAuthnError(e) : e.message);
+    const text = e.name && e.name.endsWith('Error') ? friendlyWebAuthnError(e) : e.message;
+    message($('#app-msg'),
+      auto ? 'Your account is ready. Add your fingerprint whenever you like — ' +
+             'press "Add this device". (' + text + ')'
+           : text,
+      auto ? 'warn' : 'err');
   } finally { busy(btn, false); }
 }
 
