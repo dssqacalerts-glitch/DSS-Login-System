@@ -88,6 +88,14 @@
   .lockover .lockicon { font-size: 34px; line-height: 1; }
   .lockover p { color: var(--muted); font-size: 13.5px; margin: 8px 0 14px; }
 
+  /* a code past its window is blurred out: a stale QR that still scans is a
+     refusal at the counter, so it must stop looking like a working pass */
+  .stale .qrbox { filter: blur(9px) saturate(.3); opacity: .45; }
+  .staleover { position: absolute; inset: 0; display: grid; place-items: center; padding: 18px; }
+  .staleover .inner { text-align: center; max-width: 280px; }
+  .staleover .staleicon { font-size: 30px; line-height: 1; }
+  .staleover p { color: var(--muted); font-size: 13.5px; margin: 8px 0 0; }
+
   .roll { margin-top: 14px; display: flex; align-items: center; justify-content: center; gap: 10px; }
   .ring { width: 26px; height: 26px; transform: rotate(-90deg); }
   .ring circle { fill: none; stroke-width: 3.5; }
@@ -224,6 +232,13 @@
           </div>
         </div>
 
+        <div class="staleover hidden" id="staleover">
+          <div class="inner">
+            <div class="staleicon">&#8635;</div>
+            <p id="stale-msg">Getting a fresh code&hellip;</p>
+          </div>
+        </div>
+
         <div class="roll" id="roll">
           <svg class="ring" viewBox="0 0 36 36" aria-hidden="true">
             <circle class="bg" cx="18" cy="18" r="15.5"></circle>
@@ -310,7 +325,8 @@ let state = {
   rollTimer: null,
   tickTimer: null,
   relockTimer: null,
-  rollsAt: 0
+  rollsAt: 0,
+  stale: false
 };
 
 /* ------------------------------------------------------------------ api - */
@@ -499,6 +515,7 @@ function stopTimers() {
 function lock() {
   state.unlocked = false;
   stopTimers();
+  clearStale();
   $('#qrzone').classList.add('locked');
   $('#lockover').classList.remove('hidden');
   $('#roll-txt').textContent = 'Hidden';
@@ -544,18 +561,52 @@ $('#btn-refresh').addEventListener('click', async () => {
   finally { busy(btn, false); }
 });
 
+/**
+ * Blur out the code on screen and say why.
+ *
+ * A code lives 30 seconds. Fetching the next one is a round trip to the
+ * script, and on a weak signal it can fail for minutes — during which the
+ * old QR sat there looking perfectly fine and scanning as EXPIRED at the
+ * counter. Blurring it is the honest thing: the person looks at their phone,
+ * sees it is not ready, and waits a beat instead of arguing with the guard.
+ */
+function markStale(msg) {
+  state.stale = true;
+  const cv = $('#qr');
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  $('#qrzone').classList.add('stale');
+  $('#staleover').classList.remove('hidden');
+  $('#stale-msg').textContent = msg || 'Getting a fresh code\u2026';
+  $('#p-code').textContent = '';
+  $('#roll-txt').textContent = msg || 'Getting a fresh code\u2026';
+  $('#roll').classList.remove('expiring');
+}
+
+function clearStale() {
+  state.stale = false;
+  $('#qrzone').classList.remove('stale');
+  $('#staleover').classList.add('hidden');
+}
+
 /** Pull a fresh code and schedule the next pull just before this one dies. */
 async function refreshCode() {
   if (!state.unlocked) return;
+  // Whatever is on screen is about to be replaced. If it has already run out
+  // it must stop being scannable now, not when the reply lands.
+  if (state.rollsAt && Date.now() >= state.rollsAt) markStale();
   let d;
   try {
     d = await api('pass.mine');
   } catch (e) {
     message($('#pass-msg'), e.message);
+    markStale('No signal \u2014 waiting for a fresh code.');
     // Try again shortly — a tunnel or a lift is not a reason to lock out.
     state.rollTimer = setTimeout(refreshCode, 5000);
     return;
   }
+  clearStale();
   state.data = d;
   paintPerson(d);
   paintMeals(d);
@@ -582,6 +633,8 @@ function paintRoll() {
   const circ = 2 * Math.PI * 15.5;
   $('#ring-fg').setAttribute('stroke-dasharray', circ.toFixed(1));
   $('#ring-fg').setAttribute('stroke-dashoffset', (circ * (1 - frac)).toFixed(1));
+  if (left <= 0) { markStale(); return; }
+  if (state.stale) clearStale();
   const secs = Math.ceil(left / 1000);
   $('#roll-txt').textContent = secs <= 1 ? 'New code…' : ('New code in ' + secs + ' s');
   $('#roll').classList.toggle('expiring', frac < 0.25);
@@ -697,7 +750,12 @@ async function load() {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
   if (state.unlocked && Date.now() - state.unlockedAt > RELOCK_MS) lock();
-  else if (state.unlocked) refreshCode();
+  else if (state.unlocked) {
+    // Out of a pocket, the code on screen is almost certainly dead. Blur it
+    // before the fetch, or it is scannable — and refused — in the meantime.
+    markStale();
+    refreshCode();
+  }
 });
 
 if ('serviceWorker' in navigator) {
