@@ -290,6 +290,7 @@
           <option value="employee">An employee</option>
           <option value="ojt">An OJT / student on practicum</option>
           <option value="contractor">A contractor</option>
+          <option value="supplier">A supplier</option>
           <option value="visitor">A visitor</option>
         </select>
       </div>
@@ -1090,7 +1091,9 @@ async function loadSignupDepartments() {
 function syncSignupType() {
   const t = $('#su-type').value;
   const staff = t === 'employee' || t === 'ojt';
-  const guest = t === 'contractor' || t === 'visitor';
+  // Everybody who comes from outside: company, purpose, and an approval from
+  // Security as well as the department.
+  const guest = t === 'contractor' || t === 'supplier' || t === 'visitor';
 
   // Regular or contractual is a property of an employee. It is not the same as
   // being a contractor: agency staff work in a department and eat here.
@@ -1142,7 +1145,8 @@ $('#form-signup').onsubmit = async ev => {
         busy(btn, false);
         return;
       }
-      if ((type === 'contractor' || type === 'visitor') && !$('#su-company').value.trim()) {
+      if (['contractor', 'supplier', 'visitor'].indexOf(type) !== -1
+          && !$('#su-company').value.trim()) {
         message($('#auth-msg'), 'Put in the company you are coming from.');
         busy(btn, false);
         return;

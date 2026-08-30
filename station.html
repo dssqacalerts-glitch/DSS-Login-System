@@ -77,6 +77,10 @@
   }
   .chip.warn { background: var(--out-bg); color: var(--out); border-color: transparent; }
   .chip.bad { background: var(--bad-bg); color: var(--bad); border-color: transparent; }
+  /* An unnamed gate files everything under "main" — say so rather than let it
+     look settled. */
+  .chip.stale { background: var(--out-bg); color: var(--out); border-color: transparent; }
+  button.chip { font-family: inherit; }
 
   main { flex: 1 1 auto; padding: 16px; display: grid; gap: 16px;
          grid-template-columns: minmax(320px, 1fr) minmax(300px, 420px); align-items: start; }
@@ -187,6 +191,8 @@
       <button id="mode-meal" aria-selected="false">Cafeteria</button>
     </div>
     <div class="spacer"></div>
+    <button class="chip" id="chip-gate" title="Which gate this device is on"
+            style="cursor:pointer">—</button>
     <span class="chip" id="chip-clock">—</span>
     <span class="chip hidden" id="chip-queue">0 queued</span>
     <span class="chip" id="chip-net">online</span>
@@ -291,11 +297,17 @@ const $ = s => document.querySelector(s);
 const TOKEN_KEY = 'ds-station.token';
 const QUEUE_KEY = 'ds-station.queue';
 const MODE_KEY  = 'ds-station.mode';
+const GATE_KEY  = 'ds-station.gate';
 
 let state = {
   token: localStorage.getItem(TOKEN_KEY) || null,
   user: null,
   mode: localStorage.getItem(MODE_KEY) || 'gate',
+  // Which gate this particular device stands at. Kept on the device, because
+  // that is where the fact lives — the tablet does not move, the guard does.
+  // Every pass is tagged with it, so the traffic report can tell four gates
+  // apart instead of filing everything under one name.
+  gate: localStorage.getItem(GATE_KEY) || '',
   direction: 'auto',
   scanning: false,
   lastCode: '',
@@ -452,7 +464,7 @@ async function handleIdentifier(identifier) {
 
 async function doGate(identifier) {
   const r = await submitEvent('gate.pass', {
-    eventId: uuid(), identifier, direction: state.direction, gate: 'main'
+    eventId: uuid(), identifier, direction: state.direction, gate: gateName()
   });
 
   if (r.queued) {
@@ -526,6 +538,35 @@ document.addEventListener('keydown', ev => {
   }
   if (ev.key.length === 1) wedge.buffer += ev.key;
 });
+
+/* ------------------------------------------------------------ this gate -- */
+/* Four gates, four tablets. Each one is told once which gate it is, and every
+ * event it records carries that name — otherwise the traffic report has one
+ * enormous "main" and no way to tell the service gate from the lobby. */
+
+function gateName() { return state.gate || 'main'; }
+
+function paintGate() {
+  $('#chip-gate').textContent = state.gate ? state.gate : 'name this gate';
+  $('#chip-gate').classList.toggle('stale', !state.gate);
+}
+
+function askGate() {
+  const answer = prompt(
+    'Which gate is this device on?\n\n' +
+    'Use the same name every time — it is what the traffic report groups by.\n' +
+    'For example: Main, Service, Staff, Beachfront.',
+    state.gate || '');
+  if (answer === null) return;
+  const name = answer.trim().slice(0, 40);
+  if (!name) return;
+  state.gate = name;
+  localStorage.setItem(GATE_KEY, name);
+  paintGate();
+  showResult('', 'Ready', 'This is the ' + name + ' gate', '',
+    'Every pass recorded here is filed under that name.');
+}
+$('#chip-gate').onclick = askGate;
 
 /** One entry point for anything scanned, whatever produced it. */
 function onCode(code, source) {
@@ -613,6 +654,7 @@ async function refreshPanels() {
         stat('Employees', roll.counts.employee || 0) +
         stat('OJT', roll.counts.ojt || 0) +
         stat('Contractors', roll.counts.contractor || 0) +
+        stat('Suppliers', roll.counts.supplier || 0) +
         stat('Visitors', roll.counts.visitor || 0) +
         (roll.overdue ? stat('Overdue', roll.overdue) : '');
       $('#recent').innerHTML = recent.events.length ? recent.events.map(e => `
@@ -669,6 +711,14 @@ function applyRoles() {
   else if (can('guard') && !can('cafeteria')) setMode('gate');
   else setMode(state.mode);
   $('#who').textContent = state.user.name + ' · ' + roles.join(', ');
+  paintGate();
+  // A tablet nobody has named files everything under "main", which is the same
+  // as not recording where anyone came in. Ask once, on the first shift.
+  if (!state.gate && can('guard')) {
+    showResult('', 'Name this gate', 'Tap the gate chip at the top', '',
+      'This device has not been told which gate it is on. Until it is, every ' +
+      'pass here is filed under "main".');
+  }
 }
 
 /* --------------------------------------------------------------- sign in - */
@@ -864,7 +914,7 @@ $('#g-save').onclick = async () => {
       eventId: uuid(), fullName: name, company, email, department,
       hostName: $('#g-host').value.trim(), purpose: $('#g-purpose').value.trim(),
       idType: $('#g-idtype').value.trim(), idNumber: $('#g-idnum').value.trim(),
-      vehiclePlate: $('#g-plate').value.trim(), gate: 'main'
+      vehiclePlate: $('#g-plate').value.trim(), gate: gateName()
     });
     $('#dlg-guest').close();
     const blocked = r.problems && r.problems.length;

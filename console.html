@@ -373,8 +373,12 @@
           <div class="grow" style="min-width:220px"><label for="p-q">Search</label><input id="p-q" type="text" placeholder="Name, company, badge"></div>
           <div style="min-width:160px"><label for="p-type">Type</label>
             <select id="p-type">
-              <option value="">All</option><option value="employee">Employees</option>
-              <option value="contractor">Contractors</option><option value="guest">Guests</option>
+              <option value="">All</option>
+              <option value="employee">Employees</option>
+              <option value="ojt">OJT</option>
+              <option value="contractor">Contractors</option>
+              <option value="supplier">Suppliers</option>
+              <option value="visitor">Visitors</option>
             </select>
           </div>
           <div style="min-width:150px"><label for="p-status">Status</label>
@@ -400,7 +404,9 @@
             <select id="badge-type" style="width:auto;min-width:170px">
               <option value="">Everyone active</option>
               <option value="employee">Employees</option>
+              <option value="ojt">OJT</option>
               <option value="contractor">Contractors</option>
+              <option value="supplier">Suppliers</option>
             </select>
             <button class="small" id="btn-badge-load">Load</button>
             <button class="primary small" id="btn-badge-print">Print</button>
@@ -476,6 +482,7 @@
         <option value="employee">Employee</option>
         <option value="ojt">OJT</option>
         <option value="contractor">Contractor</option>
+        <option value="supplier">Supplier</option>
         <option value="visitor">Visitor</option>
       </select>
     </div>
