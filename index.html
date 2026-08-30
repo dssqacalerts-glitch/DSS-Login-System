@@ -280,6 +280,51 @@
           fingerprint on the next screen.
         </p>
       </div>
+
+      <div class="divider">and who you are</div>
+
+      <div class="field">
+        <label for="su-type">I am</label>
+        <select id="su-type">
+          <option value="">— choose —</option>
+          <option value="employee">An employee</option>
+          <option value="ojt">An OJT / student on practicum</option>
+          <option value="contractor">A contractor</option>
+          <option value="visitor">A visitor</option>
+        </select>
+      </div>
+
+      <div class="field hidden" id="wrap-su-school">
+        <label for="su-school">School</label>
+        <input id="su-school" type="text" placeholder="The school that endorsed you">
+      </div>
+
+      <div class="field hidden" id="wrap-su-company">
+        <label for="su-company">Company</label>
+        <input id="su-company" type="text" placeholder="Who you work for">
+      </div>
+
+      <div class="field hidden" id="wrap-su-dept">
+        <label for="su-dept" id="lbl-su-dept">Department</label>
+        <select id="su-dept"><option value="">— choose —</option></select>
+        <p class="muted" style="font-size:12.5px;margin:6px 0 0" id="hint-su-dept"></p>
+      </div>
+
+      <div class="field hidden" id="wrap-su-host">
+        <label for="su-host">Who are you seeing?</label>
+        <input id="su-host" type="text" placeholder="The person expecting you">
+      </div>
+
+      <div class="field hidden" id="wrap-su-purpose">
+        <label for="su-purpose">What for?</label>
+        <input id="su-purpose" type="text" placeholder="Site inspection, delivery, meeting…">
+      </div>
+
+      <p class="muted" style="font-size:12.5px;margin:0 0 12px" id="su-note">
+        Leave the last part blank if you are only here to sign in — the office
+        can fill it in later.
+      </p>
+
       <button type="submit" class="primary full" id="btn-signup">Create account</button>
     </form>
   </div>
@@ -847,6 +892,7 @@ $('#tab-signup').onclick = () => {
   $('#tabs').classList.remove('hidden');
   $('#auth-title').textContent = 'Create your account';
   $('#auth-sub').textContent = 'Set a password first — you can add your fingerprint straight after.';
+  syncSignupType();
   clearMessage($('#auth-msg'));
 };
 
@@ -1002,28 +1048,117 @@ $('#form-signin').onsubmit = async ev => {
   finally { busy(btn, false); }
 };
 
+/* ------------------------------------------------- who you are, at signup -- */
+/* Self-declared and worth nothing on its own: the department head still has to
+ * clear the meals, and Security still has to clear a contractor's entry. What
+ * it saves is the office typing every person into the console a second time. */
+
+let departmentsLoaded = false;
+
+async function loadSignupDepartments() {
+  if (departmentsLoaded) return;
+  try {
+    const r = await api('people.departmentNames', { token: '' });
+    const sel = $('#su-dept');
+    sel.innerHTML = '<option value="">— choose —</option>' +
+      (r.departments || []).map(d =>
+        '<option value="' + escapeHtml(d) + '">' + escapeHtml(d) + '</option>').join('');
+    departmentsLoaded = true;
+    if (!(r.departments || []).length) {
+      $('#hint-su-dept').textContent =
+        'No departments are set up yet — the office has to add them first.';
+    }
+  } catch (e) {
+    $('#hint-su-dept').textContent =
+      'Could not load the department list. You can still create the account.';
+  }
+}
+
+function syncSignupType() {
+  const t = $('#su-type').value;
+  const staff = t === 'employee' || t === 'ojt';
+  const guest = t === 'contractor' || t === 'visitor';
+
+  $('#wrap-su-school').classList.toggle('hidden', t !== 'ojt');
+  $('#wrap-su-company').classList.toggle('hidden', !guest);
+  $('#wrap-su-dept').classList.toggle('hidden', !t);
+  $('#wrap-su-host').classList.toggle('hidden', t !== 'visitor');
+  $('#wrap-su-purpose').classList.toggle('hidden', !guest);
+
+  $('#lbl-su-dept').textContent = staff
+    ? 'Department' : 'Department you are attending';
+  $('#hint-su-dept').textContent = staff
+    ? 'Its head is who approves your meals.'
+    : (t ? 'That head and Security both have to approve before you can enter.' : '');
+
+  $('#su-note').classList.toggle('hidden', !!t);
+  if (t) loadSignupDepartments();
+}
+$('#su-type').onchange = syncSignupType;
+
 $('#form-signup').onsubmit = async ev => {
   ev.preventDefault();
   const btn = $('#btn-signup');
   clearMessage($('#auth-msg'));
   busy(btn, true, 'Creating…');
   try {
-    const result = await api('auth.signup', {
+    const type = $('#su-type').value;
+    // Everything the person said about themselves. The server takes the email
+    // from the account it just made, never from this form.
+    const payload = {
       token: '',
       name: $('#su-name').value.trim(),
       email: $('#su-email').value.trim(),
       password: $('#su-pass').value
-    });
+    };
+    if (type) {
+      if (!$('#su-dept').value) {
+        message($('#auth-msg'), 'Choose your department — it decides who approves you.');
+        busy(btn, false);
+        return;
+      }
+      if (type === 'ojt' && !$('#su-school').value.trim()) {
+        message($('#auth-msg'), 'Put in your school — it is who endorsed you.');
+        busy(btn, false);
+        return;
+      }
+      if ((type === 'contractor' || type === 'visitor') && !$('#su-company').value.trim()) {
+        message($('#auth-msg'), 'Put in the company you are coming from.');
+        busy(btn, false);
+        return;
+      }
+      Object.assign(payload, {
+        personType: type,
+        fullName: $('#su-name').value.trim(),
+        department: $('#su-dept').value,
+        school: $('#su-school').value.trim(),
+        company: $('#su-company').value.trim(),
+        hostName: $('#su-host').value.trim(),
+        purpose: $('#su-purpose').value.trim()
+      });
+    }
+    const result = await api('auth.signup', payload);
     $('#su-pass').value = '';
     await afterSignIn(result);
     // Deliberately not enrolling automatically. Firing the OS prompt while the
     // page is still settling is unreliable on a phone, and it races with the
     // person's own tap on the button — two requests at once, and neither
     // finishes. A prompt somebody chose to open is one they are ready for.
-    if (await platformAuthenticatorAvailable()) {
+    // What happened to the registry half, said plainly — including when it did
+    // not take, because an account without a record is a person who will be
+    // turned away at the counter without knowing why.
+    const sensorNudge = (await platformAuthenticatorAvailable())
+      ? ' Press "Add this device" to sign in with ' + platformSensorName() + ' next time.'
+      : '';
+    if (result.registryError) {
       message($('#app-msg'),
-        'Account created. Now press "Add this device" to sign in with ' +
-        platformSensorName() + ' next time.', 'ok');
+        'Your account is ready, but your details did not save: ' +
+        result.registryError + ' Ask the office to add you to the registry.' + sensorNudge,
+        'warn');
+    } else if (result.registry) {
+      message($('#app-msg'), result.registry.message + sensorNudge, 'ok');
+    } else if (sensorNudge) {
+      message($('#app-msg'), 'Account created.' + sensorNudge, 'ok');
     }
   } catch (e) { message($('#auth-msg'), e.message); }
   finally { busy(btn, false); }
