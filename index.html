@@ -397,7 +397,7 @@
  *  CONFIGURE ME
  *  Paste the /exec URL of your Apps Script deployment here.
  * ========================================================================= */
-const API_URL = 'PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE';
+const API_URL = 'https://script.google.com/macros/s/AKfycbyxBjxpArNd09-DcJilYhKiGdww-vwR4vKlqAqX_wHEOgxKmuXCVNmU3xnHQ5MEmVQ2/exec';
 
 /* ---------------------------------------------------------------- utils -- */
 const $ = sel => document.querySelector(sel);
@@ -494,20 +494,30 @@ function deviceName() {
  * being open twice, is rejected with "A request is already pending", which
  * tells the person nothing they can act on. Hold the gate here so the common
  * case never reaches the browser, and translate it when it does. */
-let webauthnBusy = false;
 const PENDING_HELP =
-  'A fingerprint prompt is already open. Finish or cancel that one first — ' +
-  'if you cannot see it, check your other browser tabs.';
+  'A fingerprint prompt is already open in another tab. Finish or close that ' +
+  'one, then try again here.';
+
+/**
+ * Refusing to start a second request was the wrong instinct. A prompt that was
+ * swiped away — which is how a phone dismisses things — can leave its promise
+ * unsettled, and a flag set on the way in then never comes back down. The
+ * person taps the button, nothing happens, and the only cure is a reload.
+ *
+ * So the newest request wins instead: whatever was outstanding is cancelled and
+ * the new one goes ahead. Tapping the button always does something.
+ */
+let webauthnAbort = null;
 
 async function oneAtATime(fn) {
-  if (webauthnBusy) {
-    const e = new Error(PENDING_HELP);
-    e.name = 'PendingError';
-    throw e;
+  if (webauthnAbort) { try { webauthnAbort.abort(); } catch (e) { /* already gone */ } }
+  const ctl = (typeof AbortController === 'function') ? new AbortController() : null;
+  webauthnAbort = ctl;
+  try {
+    return await fn(ctl ? ctl.signal : undefined);
+  } finally {
+    if (webauthnAbort === ctl) webauthnAbort = null;
   }
-  webauthnBusy = true;
-  try { return await fn(); }
-  finally { webauthnBusy = false; }
 }
 
 function friendlyWebAuthnError(err) {
@@ -515,12 +525,13 @@ function friendlyWebAuthnError(err) {
   const m = (err && err.message) || '';
   // Another tab holding the prompt: our own flag cannot see that, so match on
   // what the browser actually said.
-  if (n === 'PendingError' || /already pending|request is pending/i.test(m)) return PENDING_HELP;
+  // Another tab is holding the prompt — nothing this page can cancel.
+  if (/already pending|request is pending/i.test(m)) return PENDING_HELP;
   if (n === 'NotAllowedError') return 'Cancelled, or the fingerprint prompt timed out.';
   if (n === 'InvalidStateError') return 'This device already has a passkey for your account.';
   if (n === 'SecurityError') return 'This page must be served over https on the domain configured as RP_ID.';
   if (n === 'NotSupportedError') return 'This browser or device has no compatible fingerprint sensor.';
-  if (n === 'AbortError') return 'The fingerprint prompt was dismissed.';
+  if (n === 'AbortError') return 'The fingerprint prompt was closed. Tap the button to try again.';
   return (err && err.message) || 'Fingerprint sign-in failed.';
 }
 
@@ -550,7 +561,7 @@ async function enrolFingerprint(attachment) {
       type: c.type, id: b64uToBuf(c.id)
     }))
   };
-  const cred = await oneAtATime(() => navigator.credentials.create({ publicKey }));
+  const cred = await oneAtATime(signal => navigator.credentials.create({ publicKey, signal }));
   if (!cred) throw new Error('No credential was created.');
 
   return api('passkey.registerFinish', {
@@ -588,7 +599,8 @@ async function signInWithFingerprint(email, opts = {}) {
   const request = { publicKey };
   if (mediation) request.mediation = mediation;
 
-  const assertion = await oneAtATime(() => navigator.credentials.get(request));
+  const assertion = await oneAtATime(signal =>
+    navigator.credentials.get(Object.assign({ signal }, request)));
   if (!assertion) throw new Error('No assertion returned.');
 
   const r = assertion.response;
@@ -1004,8 +1016,14 @@ $('#form-signup').onsubmit = async ev => {
     });
     $('#su-pass').value = '';
     await afterSignIn(result);
+    // Deliberately not enrolling automatically. Firing the OS prompt while the
+    // page is still settling is unreliable on a phone, and it races with the
+    // person's own tap on the button — two requests at once, and neither
+    // finishes. A prompt somebody chose to open is one they are ready for.
     if (await platformAuthenticatorAvailable()) {
-      await runEnrolment($('#btn-enroll'), 'platform', true);
+      message($('#app-msg'),
+        'Account created. Now press "Add this device" to sign in with ' +
+        platformSensorName() + ' next time.', 'ok');
     }
   } catch (e) { message($('#auth-msg'), e.message); }
   finally { busy(btn, false); }

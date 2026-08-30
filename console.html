@@ -505,7 +505,7 @@
 /* ==========================================================================
  *  CONFIGURE ME — the /exec URL of your Apps Script deployment.
  * ========================================================================== */
-const API_URL = 'PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE';
+const API_URL = 'https://script.google.com/macros/s/AKfycbyxBjxpArNd09-DcJilYhKiGdww-vwR4vKlqAqX_wHEOgxKmuXCVNmU3xnHQ5MEmVQ2/exec';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -1348,27 +1348,32 @@ const bufToB64u = buf => {
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 };
 
-/* One WebAuthn request at a time — see index.html for why. */
-let webauthnBusy = false;
+/* The newest fingerprint request wins — see index.html for why blocking the
+ * second one was worse than cancelling the first. */
 const PENDING_HELP =
-  'A fingerprint prompt is already open. Finish or cancel that one first — ' +
-  'if you cannot see it, check your other browser tabs.';
+  'A fingerprint prompt is already open in another tab. Finish or close that ' +
+  'one, then try again here.';
+let webauthnAbort = null;
 async function oneAtATime(fn) {
-  if (webauthnBusy) { const e = new Error(PENDING_HELP); e.name = 'PendingError'; throw e; }
-  webauthnBusy = true;
-  try { return await fn(); } finally { webauthnBusy = false; }
+  if (webauthnAbort) { try { webauthnAbort.abort(); } catch (e) { /* already gone */ } }
+  const ctl = (typeof AbortController === 'function') ? new AbortController() : null;
+  webauthnAbort = ctl;
+  try { return await fn(ctl ? ctl.signal : undefined); }
+  finally { if (webauthnAbort === ctl) webauthnAbort = null; }
 }
 function pendingAware(err) {
   const m = (err && err.message) || '';
-  if ((err && err.name === 'PendingError') || /already pending|request is pending/i.test(m)) {
-    return PENDING_HELP;
+  if (/already pending|request is pending/i.test(m)) return PENDING_HELP;
+  if (err && err.name === 'AbortError') {
+    return 'The fingerprint prompt was closed. Try again.';
   }
   return m || 'Fingerprint sign-in failed.';
 }
 
 async function passkeySignIn() {
   const { options } = await api('passkey.loginBegin', { email: $('#si-email').value.trim(), token: '' });
-  const assertion = await oneAtATime(() => navigator.credentials.get({
+  const assertion = await oneAtATime(signal =>
+    navigator.credentials.get(Object.assign({ signal }, {
     publicKey: {
       challenge: b64uToBuf(options.challenge), rpId: options.rpId,
       timeout: options.timeout, userVerification: options.userVerification,
@@ -1376,7 +1381,7 @@ async function passkeySignIn() {
         type: c.type, id: b64uToBuf(c.id), transports: c.transports
       }))
     }
-  }));
+  })));
   const r = assertion.response;
   return api('passkey.loginFinish', {
     token: '',
