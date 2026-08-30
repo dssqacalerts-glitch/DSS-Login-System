@@ -484,6 +484,14 @@
       <input id="f-dept" type="text" list="dept-list" autocomplete="off">
       <datalist id="dept-list"></datalist>
     </div>
+    <div class="field hidden" id="wrap-employment"><label for="f-employment">Engagement *</label>
+      <select id="f-employment">
+        <option value="regular">Regular</option>
+        <option value="contractual">Contractual — via agency</option>
+      </select>
+    </div>
+    <div class="field hidden" id="wrap-agency"><label for="f-agency">Agency *</label>
+      <input id="f-agency" type="text" placeholder="Who supplied them"></div>
     <div class="field hidden" id="wrap-school"><label for="f-school">School *</label>
       <input id="f-school" type="text" placeholder="Who endorsed them for practicum"></div>
     <div class="field" id="wrap-company"><label for="f-company">Company *</label><input id="f-company" type="text"></div>
@@ -963,7 +971,10 @@ async function loadPeople() {
         p.selfRegistered ? '<div class="pill">self-entered</div>' : ''}</td>
       <td><span class="pill ${esc(p.personType)}">${esc(p.personType)}</span></td>
       <td>${esc(p.org || '—')}${
-        p.school ? `<div class="muted" style="font-size:12px">${esc(p.school)}</div>` : ''}</td>
+        p.school ? `<div class="muted" style="font-size:12px">${esc(p.school)}</div>` : ''}${
+        p.employmentType === 'contractual'
+          ? `<div class="muted" style="font-size:12px">Contractual · ${esc(p.agency || 'no agency')}</div>`
+          : ''}</td>
       <td class="num">${esc(p.badgeSerial || '—')}</td>
       <td>${p.hasCard ? '<span class="pill good">yes</span>' : '<span class="pill">—</span>'}</td>
       <td>${statusPill(p.mealStatus)}</td>
@@ -978,9 +989,24 @@ async function loadPeople() {
 }
 
 async function loadSettings() {
-  const [{ periods }, users, depts] = await Promise.all([
+  // Three independent things on one screen. Promise.all would let any one of
+  // them take the other two down with it — and a broken meal-period call is no
+  // reason to hide the departments, which is where somebody goes to fix things.
+  const [periodsR, usersR, deptsR] = await Promise.allSettled([
     api('meal.periods'), api('admin.users'), api('people.departments')
   ]);
+  const failures = [];
+  const take = (r, what, fallback) => {
+    if (r.status === 'fulfilled') return r.value;
+    failures.push(what + ': ' + (r.reason && r.reason.message ? r.reason.message : r.reason));
+    return fallback;
+  };
+  const periods = take(periodsR, 'Meal periods', { periods: [] }).periods || [];
+  const users = take(usersR, 'Station accounts', { users: [] });
+  const depts = take(deptsR, 'Departments', { departments: [] });
+  if (failures.length) message($('#app-msg'), failures.join(' · '));
+  else clearMessage($('#app-msg'));
+
   state.departments = depts.departments || [];
 
   $('#dept-rows').innerHTML = state.departments.length ? state.departments.map(d => `
@@ -1199,6 +1225,11 @@ function syncPersonForm() {
   const staff = ['employee', 'ojt'].indexOf(t) !== -1;
   $('#lbl-dept').textContent = staff ? 'Department *' : 'Department they are visiting *';
   $('#wrap-company').classList.toggle('hidden', staff);
+  // Regular or contractual applies to an employee only — and it is not the
+  // same as being a contractor, who is an outside company doing a job.
+  $('#wrap-employment').classList.toggle('hidden', t !== 'employee');
+  $('#wrap-agency').classList.toggle(
+    'hidden', !(t === 'employee' && $('#f-employment').value === 'contractual'));
   // An OJT is a student on practicum: the school is who endorsed them, and the
   // pass runs for as long as the placement does.
   $('#wrap-school').classList.toggle('hidden', t !== 'ojt');
@@ -1206,12 +1237,14 @@ function syncPersonForm() {
   $('#lbl-email').textContent = staff ? 'Email' : 'Email * — the entry QR goes here';
 }
 $('#f-type').onchange = syncPersonForm;
+$('#f-employment').onchange = syncPersonForm;
 
 $('#btn-add-person').onclick = () => {
   state.editing = null;
   $('#dlg-person-title').textContent = 'Add person';
-  ['f-name', 'f-dept', 'f-school', 'f-company', 'f-position', 'f-card', 'f-valid', 'f-email']
-    .forEach(id => { $('#' + id).value = ''; });
+  ['f-name', 'f-dept', 'f-school', 'f-agency', 'f-company', 'f-position', 'f-card',
+   'f-valid', 'f-email'].forEach(id => { $('#' + id).value = ''; });
+  $('#f-employment').value = 'regular';
   loadDepartments().catch(() => {});
   $('#f-type').value = 'employee';
   $('#f-meals').value = 'yes';
@@ -1234,6 +1267,8 @@ $('#people-rows').addEventListener('click', ev => {
   $('#f-email').value = p.email || '';
   $('#f-dept').value = p.department;
   $('#f-school').value = p.school || '';
+  $('#f-employment').value = p.employmentType || 'regular';
+  $('#f-agency').value = p.agency || '';
   $('#f-company').value = p.company;
   $('#f-position').value = p.position;
   $('#f-card').value = p.cardId || '';
@@ -1251,6 +1286,8 @@ $('#p-save').onclick = async () => {
   const payload = {
     personType: $('#f-type').value,
     school: $('#f-school').value.trim(),
+    employmentType: $('#f-type').value === 'employee' ? $('#f-employment').value : '',
+    agency: $('#f-agency').value.trim(),
     fullName: $('#f-name').value.trim(),
     email: $('#f-email').value.trim(),
     department: $('#f-dept').value.trim(),

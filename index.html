@@ -294,6 +294,19 @@
         </select>
       </div>
 
+      <div class="field hidden" id="wrap-su-employment">
+        <label for="su-employment">Are you regular or contractual?</label>
+        <select id="su-employment">
+          <option value="regular">Regular</option>
+          <option value="contractual">Contractual — through an agency</option>
+        </select>
+      </div>
+
+      <div class="field hidden" id="wrap-su-agency">
+        <label for="su-agency">Agency</label>
+        <input id="su-agency" type="text" placeholder="The agency that supplied you">
+      </div>
+
       <div class="field hidden" id="wrap-su-school">
         <label for="su-school">School</label>
         <input id="su-school" type="text" placeholder="The school that endorsed you">
@@ -1079,6 +1092,12 @@ function syncSignupType() {
   const staff = t === 'employee' || t === 'ojt';
   const guest = t === 'contractor' || t === 'visitor';
 
+  // Regular or contractual is a property of an employee. It is not the same as
+  // being a contractor: agency staff work in a department and eat here.
+  $('#wrap-su-employment').classList.toggle('hidden', t !== 'employee');
+  $('#wrap-su-agency').classList.toggle(
+    'hidden', !(t === 'employee' && $('#su-employment').value === 'contractual'));
+
   $('#wrap-su-school').classList.toggle('hidden', t !== 'ojt');
   $('#wrap-su-company').classList.toggle('hidden', !guest);
   $('#wrap-su-dept').classList.toggle('hidden', !t);
@@ -1095,6 +1114,7 @@ function syncSignupType() {
   if (t) loadSignupDepartments();
 }
 $('#su-type').onchange = syncSignupType;
+$('#su-employment').onchange = syncSignupType;
 
 $('#form-signup').onsubmit = async ev => {
   ev.preventDefault();
@@ -1127,11 +1147,19 @@ $('#form-signup').onsubmit = async ev => {
         busy(btn, false);
         return;
       }
+      if (type === 'employee' && $('#su-employment').value === 'contractual'
+          && !$('#su-agency').value.trim()) {
+        message($('#auth-msg'), 'Put in your agency — it is who supplied you.');
+        busy(btn, false);
+        return;
+      }
       Object.assign(payload, {
         personType: type,
         fullName: $('#su-name').value.trim(),
         department: $('#su-dept').value,
         school: $('#su-school').value.trim(),
+        employmentType: type === 'employee' ? $('#su-employment').value : '',
+        agency: $('#su-agency').value.trim(),
         company: $('#su-company').value.trim(),
         hostName: $('#su-host').value.trim(),
         purpose: $('#su-purpose').value.trim()
