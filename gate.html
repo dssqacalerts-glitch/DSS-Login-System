@@ -127,9 +127,25 @@
   .feed .row.out .dir { color: var(--out); }
 
   /* ---- service + counters ---- */
-  .service .big { font-size: clamp(24px, 4.4vmin, 62px); font-weight: 800; letter-spacing: -.02em; }
-  .service .sub { font-size: clamp(13px, 1.8vmin, 23px); color: var(--text-2); margin-top: .4vmin; }
-  .service.closed .big { color: var(--muted); }
+  /* Every type has a row, and a row with nothing in it still shows its zero.
+     A line that disappears when it is empty leaves the reader wondering
+     whether it was counted at all. */
+  .stats { display: flex; flex-direction: column; }
+  .stats .r {
+    display: flex; align-items: baseline; gap: 1.4vmin; padding: .75vmin 0;
+    border-bottom: 1px solid var(--line); font-size: clamp(13px, 1.9vmin, 25px);
+  }
+  .stats .r:last-child { border-bottom: none; }
+  .stats .r .k { color: var(--text-2); flex: 1 1 auto;
+                 overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stats .r .n { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stats .r.total { border-bottom: 1px solid var(--line); }
+  .stats .r.total .k { color: var(--text); font-weight: 700; }
+  .stats .r.total .n { font-size: clamp(20px, 3.2vmin, 44px); font-weight: 800; letter-spacing: -.02em; }
+  .stats .r .n.zero { color: var(--muted); }
+  .stats .r .n .o { color: var(--out); }
+  .stats .r .n .i { color: var(--in); }
+  .stats .r .n .sep { color: var(--muted); font-weight: 400; padding: 0 .3vmin; }
 
   .counters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2vmin; }
   .counter { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
@@ -215,8 +231,7 @@
     <div class="col right">
       <section class="card service" id="service">
         <h2 id="service-h2">On site now</h2>
-        <div class="big" id="service-name">—</div>
-        <div class="sub" id="service-sub"></div>
+        <div class="stats" id="stats"></div>
       </section>
 
       <div class="counters">
@@ -228,8 +243,8 @@
       <section class="card scroll">
         <h2 id="h-gates">By gate</h2>
         <div class="bars" id="by-gate"></div>
-        <h2 style="margin-top:1.8vmin">Who is passing</h2>
-        <div class="bars" id="by-type"></div>
+        <h2 style="margin-top:1.8vmin" id="h-orgs">Busiest departments</h2>
+        <div class="bars" id="by-org"></div>
         <h2 style="margin-top:1.8vmin">Last two hours</h2>
         <div class="spark" id="spark"></div>
         <div class="sparkfoot">
@@ -421,6 +436,16 @@ const TYPE_LABEL = {
   employee: 'Employees', ojt: 'OJT', contractor: 'Contractors',
   supplier: 'Suppliers', visitor: 'Visitors'
 };
+const TYPE_ORDER = ['employee', 'ojt', 'contractor', 'supplier', 'visitor'];
+
+/** One row per line, zeros included and greyed rather than dropped. */
+function statRows(host, rows) {
+  host.innerHTML = rows.map(r => `
+    <div class="r${r.total ? ' total' : ''}">
+      <span class="k">${esc(r.label)}</span>
+      <span class="n${r.zero ? ' zero' : ''}">${r.html || esc(String(r.value))}</span>
+    </div>`).join('');
+}
 
 function paint(feed) {
   const scope = feed.gate ? cap(feed.gate) + ' gate' : 'all gates';
@@ -430,25 +455,34 @@ function paint(feed) {
     ? ''
     : (feed.gates.length ? feed.gates.length + ' gates: ' + feed.gates.map(cap).join(' · ') : '');
 
-  // On site is a whole-site number, so a single-gate board does not show it —
-  // under one gate's name it would read as "this many came through here and
-  // never left", which is not what it counts. That board shows its own traffic
-  // instead, which is the number the guard standing there can actually verify.
   if (feed.onsite) {
+    // The office board: who is inside the property right now.
     $('#service').className = 'card service';
     $('#service-h2').textContent = 'On site now';
-    $('#service-name').textContent = feed.onsite.total;
     const c = feed.onsite.counts || {};
-    const parts = Object.keys(TYPE_LABEL)
-      .filter(k => c[k])
-      .map(k => c[k] + ' ' + TYPE_LABEL[k].toLowerCase());
-    $('#service-sub').textContent = parts.length ? parts.join(' · ') : 'Nobody signed in.';
+    statRows($('#stats'), [{ label: 'Total inside', value: feed.onsite.total, total: true }]
+      .concat(TYPE_ORDER.map(t => ({
+        label: TYPE_LABEL[t], value: c[t] || 0, zero: !c[t]
+      }))));
   } else {
+    // A gate's own board. "On site" is a whole-site number and would read here
+    // as "this many came through and never left", so this counts what actually
+    // happened at this barrier instead — which is what the guard standing at it
+    // can check against what they saw.
     $('#service').className = 'card service closed';
-    $('#service-h2').textContent = 'Through this gate today';
-    $('#service-name').textContent = feed.totals.in + feed.totals.out;
-    $('#service-sub').textContent =
-      feed.totals.in + ' in · ' + feed.totals.out + ' out';
+    $('#service-h2').textContent = 'Through ' + cap(feed.gate) + ' today';
+    const t = feed.byType || {};
+    const pair = (i, o) =>
+      `<span class="${i ? 'i' : ''}">${i}</span><span class="sep">/</span>` +
+      `<span class="${o ? 'o' : ''}">${o}</span>`;
+    statRows($('#stats'), [{
+      label: 'In / out', total: true,
+      html: pair(feed.totals.in, feed.totals.out)
+    }].concat(TYPE_ORDER.map(k => ({
+      label: TYPE_LABEL[k],
+      html: pair((t[k] && t[k].in) || 0, (t[k] && t[k].out) || 0),
+      zero: !(t[k] && (t[k].in || t[k].out))
+    }))));
   }
 
   $('#c-in').textContent = feed.totals.in;
@@ -460,27 +494,26 @@ function paint(feed) {
   $('#c-overdue').closest('.counter').className =
     'counter overdue' + (overdue ? '' : ' none');
 
-  // On a single-gate board "by gate" is one bar about itself, which tells
-  // nobody anything. Show the direction split there instead.
+  // On a single-gate board "by gate" would be one bar about itself, which
+  // tells nobody anything.
   if (feed.gate) {
     $('#h-gates').textContent = 'In and out';
     bars($('#by-gate'), [
       { label: 'In', value: feed.totals.in },
       { label: 'Out', value: feed.totals.out }
     ], 'var(--in)');
+    $('#h-orgs').textContent = 'Busiest through this gate';
   } else {
     $('#h-gates').textContent = 'By gate';
     bars($('#by-gate'), feed.byGate.map(g => ({
       label: cap(g.name), value: g.in + g.out,
       text: g.in + ' / ' + g.out
     })));
+    $('#h-orgs').textContent = 'Busiest departments';
   }
 
-  const types = Object.keys(feed.byType || {})
-    .map(t => ({ label: TYPE_LABEL[t] || cap(t),
-                 value: feed.byType[t].in + feed.byType[t].out }))
-    .sort((a, b) => b.value - a.value);
-  bars($('#by-type'), types, 'var(--series-2)');
+  bars($('#by-org'), (feed.byOrg || []).map(o => ({ label: o.name, value: o.passes })),
+    'var(--series-2)');
 
   paintSpark(feed.throughput);
   paintFeed(feed.recent || []);
