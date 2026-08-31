@@ -556,6 +556,11 @@ async function tick() {
     const feed = await api('display.gateFeed', { seq: state.seq, gate: GATE || undefined });
     state.lastGood = Date.now();
     paintNet(true);
+    // Whatever was wrong has stopped being wrong.
+    if (!$('#setup').classList.contains('hidden')) {
+      $('#setup').classList.add('hidden');
+      $('#screen').classList.remove('hidden');
+    }
     if (feed.timezone) siteZone = feed.timezone;
     if (feed.serverTime) skew = new Date(feed.serverTime).getTime() - Date.now();
     if (feed.changed) {
@@ -565,23 +570,23 @@ async function tick() {
     }
   } catch (e) {
     paintNet(false);
-    if (e.status === 403 || e.status === 503) {
-      showSetup(e.message);
-      return;                       // stop polling on a key problem
-    }
-    // "Unknown action" means the page is newer than the deployment behind it.
-    // Retrying forever under a "no connection" chip is the wrong answer: the
-    // connection is fine, and no amount of waiting will fix it.
-    if (e.status === 404 || /Unknown action/i.test(e.message || '')) {
-      showSetup('This page is asking for something the deployment does not have yet.');
-      return;
-    }
+    // A status means the SERVER answered — it read the request, decided, and
+    // said why. That is never a connection problem, and hiding it behind a
+    // "no connection" chip throws away the one sentence that would have told
+    // somebody what to do. Show it.
+    //
+    // But keep polling anyway. Some of these are permanent (an endpoint that
+    // does not exist) and some are not (a quota, a lock, a bad minute), and a
+    // wall screen that gives up for good on a bad minute needs a human to walk
+    // over and press F5. So the message goes up, the asking continues, and the
+    // board puts itself back together the moment an answer arrives.
+    if (e.status) showSetup(e.message, true);
   }
   timer = setTimeout(tick, state.polling);
 }
 
-function showSetup(msg) {
-  clearTimeout(timer);
+function showSetup(msg, keepTrying) {
+  if (!keepTrying) clearTimeout(timer);
   $('#screen').classList.add('hidden');
   $('#setup').classList.remove('hidden');
   $('#setup-msg').innerHTML = esc(msg) +
