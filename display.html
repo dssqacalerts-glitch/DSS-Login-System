@@ -437,9 +437,13 @@ function paint(feed) {
 
 function paintNet(ok) {
   const chip = $('#chip-net');
-  const stale = Date.now() - state.lastGood;
   if (ok) { chip.className = 'chip live'; chip.textContent = 'live'; return; }
   chip.className = 'chip stale';
+  // Until the first answer arrives there is no "since" to measure from, and
+  // subtracting from zero gave "no connection for 29802742 min" — a number so
+  // obviously wrong that it hid the real problem underneath it.
+  if (!state.lastGood) { chip.textContent = 'never connected'; return; }
+  const stale = Date.now() - state.lastGood;
   chip.textContent = stale > 120000
     ? 'no connection for ' + Math.round(stale / 60000) + ' min'
     : 'reconnecting…';
@@ -473,6 +477,13 @@ async function tick() {
     if (e.status === 403 || e.status === 503) {
       showSetup(e.message);
       return;                       // stop polling on a key problem
+    }
+    // "Unknown action" means the page is newer than the deployment behind it.
+    // Retrying forever under a "no connection" chip is the wrong answer: the
+    // connection is fine, and no amount of waiting will fix it.
+    if (e.status === 404 || /Unknown action/i.test(e.message || '')) {
+      showSetup('This page is asking for something the deployment does not have yet.');
+      return;
     }
   }
   timer = setTimeout(tick, state.polling);
