@@ -419,10 +419,17 @@
     <!-- ============================================== SETTINGS ======== -->
     <section id="tab-settings" class="stack hidden">
       <div class="card pad">
-        <h2>Meal periods and unit costs</h2>
-        <p class="sub">The unit cost is what each meal is valued at in the reports. Nobody pays at the counter.</p>
+        <div class="section-head">
+          <div>
+            <h2>Meal periods and unit costs</h2>
+            <p class="sub">The unit cost is what each meal is valued at in the reports. Nobody pays
+              at the counter. Give each meal its own hours — where two overlap, the one higher in
+              the list wins, which is not a rule anyone can see.</p>
+          </div>
+          <button class="primary small" id="btn-add-period" style="align-self:start">Add meal period</button>
+        </div>
         <div class="scroll"><table>
-          <thead><tr><th>Period</th><th>Starts</th><th>Ends</th><th class="num">Unit cost</th><th></th></tr></thead>
+          <thead><tr><th>Period</th><th>Starts</th><th>Ends</th><th class="num">Unit cost</th><th>Served?</th><th></th></tr></thead>
           <tbody id="period-rows"></tbody>
         </table></div>
       </div>
@@ -1008,7 +1015,10 @@ async function loadSettings() {
     failures.push(what + ': ' + (r.reason && r.reason.message ? r.reason.message : r.reason));
     return fallback;
   };
-  const periods = take(periodsR, 'Meal periods', { periods: [] }).periods || [];
+  const periodData = take(periodsR, 'Meal periods', { periods: [] });
+  // `all` includes the ones switched off — a period you can turn off but never
+  // see again is a one-way door.
+  const periods = periodData.all || periodData.periods || [];
   const users = take(usersR, 'Station accounts', { users: [] });
   const depts = take(deptsR, 'Departments', { departments: [] });
   if (failures.length) message($('#app-msg'), failures.join(' · '));
@@ -1026,11 +1036,12 @@ async function loadSettings() {
     </tr>`).join('')
     : '<tr><td colspan="4" class="empty">No departments yet. Add one — nothing can be approved until you do.</td></tr>';
   $('#period-rows').innerHTML = periods.map(p => `
-    <tr data-code="${esc(p.code)}">
+    <tr data-code="${esc(p.code)}"${p.active === false ? ' style="opacity:.55"' : ''}>
       <td><b>${esc(p.label)}</b></td>
       <td><input class="p-start" type="text" value="${esc(p.startTime)}" style="max-width:110px"></td>
       <td><input class="p-end" type="text" value="${esc(p.endTime)}" style="max-width:110px"></td>
       <td class="num"><input class="p-cost" type="text" value="${esc(p.unitCost)}" style="max-width:110px;text-align:right"></td>
+      <td><label style="white-space:nowrap"><input class="p-active" type="checkbox"${p.active === false ? '' : ' checked'}> served</label></td>
       <td><button class="small p-save">Save</button></td>
     </tr>`).join('');
 
@@ -1154,6 +1165,34 @@ $('#people-rows').addEventListener('click', async ev => {
   } catch (e) { message($('#app-msg'), e.message); }
   finally { btn.disabled = false; }
 });
+
+$('#btn-add-period').onclick = async () => {
+  const label = prompt(
+    'What is this meal called?\n\n' +
+    'For the graveyard shift, something like "Night meal".');
+  if (!label) return;
+  const start = prompt('When does ' + label + ' start? Use 24-hour time, e.g. 22:00');
+  if (!start) return;
+  const end = prompt(
+    'When does ' + label + ' end? Use 24-hour time, e.g. 05:00\n\n' +
+    'An end earlier than the start means it runs past midnight, which is what a ' +
+    'night shift needs.');
+  if (!end) return;
+  const cost = prompt('What is one ' + label + ' valued at, for the reports?', '0');
+  if (cost === null) return;
+
+  // The code is what the log and every report key on, so it is derived once
+  // from the name and never changes afterwards, however the label is edited.
+  const code = label.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20);
+  if (!code) { message($('#app-msg'), 'That name has no letters in it.'); return; }
+  try {
+    await api('meal.savePeriod', {
+      code, label, startTime: start.trim(), endTime: end.trim(), unitCost: Number(cost) || 0
+    });
+    await loadSettings();
+    message($('#app-msg'), label + ' added. Check the hours do not overlap another meal.', 'ok');
+  } catch (e) { message($('#app-msg'), e.message); }
+};
 
 $('#btn-add-dept').onclick = async () => {
   const name = prompt('Department name');
@@ -1335,9 +1374,11 @@ $('#period-rows').addEventListener('click', async ev => {
       label: tr.querySelector('b').textContent,
       startTime: tr.querySelector('.p-start').value.trim(),
       endTime: tr.querySelector('.p-end').value.trim(),
-      unitCost: Number(tr.querySelector('.p-cost').value)
+      unitCost: Number(tr.querySelector('.p-cost').value),
+      active: tr.querySelector('.p-active').checked
     });
     message($('#app-msg'), 'Meal period updated.', 'ok');
+    await loadSettings();
   } catch (e) { message($('#app-msg'), e.message); }
   finally { btn.disabled = false; }
 });
