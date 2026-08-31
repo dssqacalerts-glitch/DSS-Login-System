@@ -120,6 +120,18 @@
   .result .org { color: var(--muted); }
   .result .detail { margin-top: 10px; font-size: 15px; }
   .result .warn { margin-top: 10px; color: var(--out); font-size: 14px; }
+  /* the late-plate offer: a row of periods, big enough to hit on a tablet at a
+     counter, and deliberately not styled like the primary action — serving
+     outside a window is a decision somebody takes, not the default path */
+  .result .actions { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 10px; }
+  .result .actions .lede { flex: 1 0 100%; color: var(--muted); font-size: 14px; margin: 0 0 2px; }
+  .result .actions button {
+    flex: 1 1 auto; min-width: 140px; padding: 14px 16px; font: inherit;
+    font-weight: 600; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  }
+  .result .actions button:hover { border-color: var(--out); }
+  .result .actions button[disabled] { opacity: .5; cursor: default; }
 
   .pill { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 3px 9px;
           border-radius: 999px; text-transform: uppercase; letter-spacing: .05em; }
@@ -235,6 +247,7 @@
         <div class="org" id="r-org"></div>
         <div class="detail" id="r-detail"></div>
         <div class="warn" id="r-warn"></div>
+        <div class="actions hidden" id="r-actions"></div>
       </div>
     </div>
 
@@ -310,6 +323,9 @@ let state = {
   gate: localStorage.getItem(GATE_KEY) || '',
   direction: 'auto',
   scanning: false,
+  // The meal periods on file, so the counter can offer a late plate without a
+  // round trip at the moment somebody is standing in front of it.
+  periods: [],
   lastCode: '',
   lastCodeAt: 0,
   busy: false,
@@ -342,6 +358,8 @@ async function api(action, params = {}) {
   if (!json.ok) {
     const err = new Error(json.error || 'Request failed.');
     err.status = json.status;
+    err.code = json.code || '';
+    err.details = json.details || null;
     throw err;
   }
   return json;
@@ -438,6 +456,67 @@ function showResult(kind, verdict, who, org, detail, warn) {
   $('#r-org').innerHTML = org || '';
   $('#r-detail').textContent = detail || '';
   $('#r-warn').textContent = warn || '';
+  // Always clear the late-plate offer. An offer left over from the previous
+  // scan, still on screen when the next person steps up, records a meal
+  // against the wrong name.
+  clearServeAs();
+}
+
+function clearServeAs() {
+  const row = $('#r-actions');
+  row.innerHTML = '';
+  row.classList.add('hidden');
+}
+
+/**
+ * Offer to serve anyway, as a named meal.
+ *
+ * Discovery Samal runs around the clock, so somebody coming off a graveyard
+ * shift at 03:00 is not an exception to be argued with — but the meal still
+ * has to be booked against a period, or it has no cost and appears in no
+ * report. The attendant picks which, and the log records that it was outside
+ * the window.
+ */
+function offerServeAs(identifier, details) {
+  const row = $('#r-actions');
+  const periods = state.periods || [];
+  if (!periods.length) return;
+  const taken = (details && details.takenToday) || [];
+  const spent = (details && details.allowance !== undefined)
+    && taken.length >= details.allowance;
+
+  if (spent) {
+    row.innerHTML = '<p class="lede">Nothing left to serve — ' +
+      esc((details.person && details.person.fullName) || 'this person') +
+      ' has had ' + taken.length + ' of ' + details.allowance + ' today.</p>';
+    row.classList.remove('hidden');
+    return;
+  }
+
+  row.innerHTML = '<p class="lede">Serve anyway, as:</p>';
+  periods.forEach(p => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    // A meal already taken today is shown, but not pressable: hiding it makes
+    // the attendant wonder where it went, and leaving it live gets them a
+    // second refusal for a different reason.
+    const already = taken.indexOf(p.code) !== -1;
+    b.textContent = already ? p.label + ' — already taken' : p.label;
+    b.disabled = already;
+    if (already) { row.appendChild(b); return; }
+    b.addEventListener('click', async () => {
+      Array.from(row.querySelectorAll('button')).forEach(x => { x.disabled = true; });
+      b.textContent = 'Recording…';
+      try { await doMeal(identifier, p.code); }
+      catch (e) {
+        beep(false);
+        showResult('bad', 'Refused', 'Cannot be served', '', e.message);
+      }
+      refreshPanels();
+    });
+    row.appendChild(b);
+  });
+  row.classList.remove('hidden');
 }
 
 function personLine(p) {
@@ -454,8 +533,17 @@ async function handleIdentifier(identifier) {
     else await doMeal(identifier);
   } catch (e) {
     beep(false);
-    showResult('bad', 'Refused',
-      state.mode === 'gate' ? 'Cannot pass' : 'Cannot be served', '', e.message);
+    if (e.code === 'NO_SERVICE_OPEN') {
+      const who = (e.details && e.details.person) || null;
+      showResult('bad', 'Between services',
+        who ? who.fullName : 'Nothing is being served',
+        who ? personLine(who) : '',
+        e.message + ' If this is a late plate, book it against a meal below.');
+      offerServeAs(identifier, e.details);
+    } else {
+      showResult('bad', 'Refused',
+        state.mode === 'gate' ? 'Cannot pass' : 'Cannot be served', '', e.message);
+    }
   } finally {
     state.busy = false;
     refreshPanels();
@@ -486,10 +574,10 @@ async function doGate(identifier) {
       : 'Signed out after ' + r.hoursOnSite + ' h');
 }
 
-async function doMeal(identifier) {
-  const r = await submitEvent('meal.claim', {
-    eventId: uuid(), identifier, station: 'cafeteria'
-  });
+async function doMeal(identifier, mealPeriod) {
+  const params = { eventId: uuid(), identifier, station: 'cafeteria' };
+  if (mealPeriod) params.mealPeriod = mealPeriod;
+  const r = await submitEvent('meal.claim', params);
 
   if (r.queued) {
     beep(true);
@@ -505,7 +593,8 @@ async function doMeal(identifier) {
   beep(true);
   const nth = r.takenToday === 2 ? ' · 2nd meal today' : '';
   const warn = [];
-  if (r.outsideWindow) warn.push('Outside the normal service window — flagged in the log.');
+  if (r.outsideWindow) warn.push('Served outside the ' + r.period.label.toLowerCase() +
+    ' window — recorded as a late plate, at the ' + r.period.label.toLowerCase() + ' rate.');
   if (r.entitlement && r.entitlement.overtime) {
     warn.push('On overtime: ' + r.entitlement.hoursToday + ' h on site.');
   }
@@ -664,7 +753,13 @@ async function refreshPanels() {
             <div class="meta">${esc(e.org || '')} · ${timeOf(e.at)}</div></div>
         </div>`).join('') : '<div class="empty">Nothing yet today.</div>';
     } else {
-      const t = await api('meal.today');
+      const [t, defs] = await Promise.all([
+        api('meal.today'),
+        // Never let a failure here take the counters down with it: knowing what
+        // has been served matters more than being able to offer a late plate.
+        api('meal.periods').catch(() => ({ periods: [] }))
+      ]);
+      state.periods = defs.periods || [];
       $('#counts-title').textContent = 'Served today';
       $('#counts').innerHTML =
         stat('Meals', t.meals) +
