@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Approval</title>
+<style>
+  :root {
+    --bg:#f2f4f2; --card:#ffffff; --line:#dbe2dd; --ink:#1a201c; --muted:#67776e;
+    --accent:#0f6b52; --bad:#a1302a; --warn:#8a5510;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:520px; margin:0 auto; padding:28px 18px 64px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:26px 24px; }
+  .eyebrow { font-size:11px; letter-spacing:2px; text-transform:uppercase;
+    color:var(--accent); font-weight:700; margin:0 0 10px; }
+  h1 { font-size:22px; line-height:1.25; margin:0 0 6px; }
+  .sub { color:var(--muted); font-size:14.5px; margin:0 0 20px; }
+  table { width:100%; border-collapse:collapse; font-size:14.5px; margin:0 0 20px; }
+  th { text-align:left; color:var(--muted); font-weight:400; padding:8px 12px 8px 0;
+    border-bottom:1px solid #eef2ef; white-space:nowrap; vertical-align:top; }
+  td { padding:8px 0; border-bottom:1px solid #eef2ef; font-weight:600; }
+  label { display:block; font-size:13px; font-weight:600; color:var(--muted); margin:0 0 6px; }
+  input[type=text] { width:100%; padding:12px; font:inherit;
+    border:1px solid #cfd8d2; border-radius:9px; background:#fbfcfb; }
+  .field { margin:0 0 16px; }
+  form { margin:22px 0 0; }
+  button { width:100%; padding:16px; font:inherit; font-weight:700; font-size:16px;
+    border:0; border-radius:10px; color:#fff; cursor:pointer; }
+  button[disabled] { opacity:.55; cursor:default; }
+  .approve { background:var(--accent); }
+  .decline { background:var(--bad); }
+  .alt { display:block; width:100%; text-align:center; margin:14px 0 0; font-size:14px;
+    color:var(--muted); background:none; border:0; padding:6px; cursor:pointer;
+    font-weight:400; text-decoration:underline; }
+  .note { font-size:13px; color:var(--muted); line-height:1.55; margin:18px 0 0; }
+  .banner { padding:14px 16px; border-radius:10px; font-size:14.5px; margin:0 0 18px; }
+  .banner.ok { background:#e3f0ea; color:var(--accent); }
+  .banner.bad { background:#f8e7e4; color:var(--bad); }
+  .banner.wait { background:#f6efdd; color:var(--warn); }
+  .foot { text-align:center; color:var(--muted); font-size:12px; margin:18px 0 0; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card" id="card">
+    <p class="eyebrow" id="eyebrow">Approval</p>
+    <h1 id="heading">Loading…</h1>
+    <p class="sub" id="sub"></p>
+    <div class="banner hidden" id="banner"></div>
+    <div id="details"></div>
+    <p class="note hidden" id="other"></p>
+
+    <form id="form" class="hidden" autocomplete="on">
+      <div class="field">
+        <label for="by">Your name</label>
+        <input id="by" type="text" name="by" autocomplete="name">
+      </div>
+      <div class="field">
+        <label for="note">Note (optional)</label>
+        <input id="note" type="text" name="note">
+      </div>
+      <button type="button" class="approve" id="btn-primary">Approve</button>
+      <button type="button" class="alt" id="btn-alt">Decline instead</button>
+    </form>
+
+    <p class="note hidden" id="reassure">
+      Nothing has been recorded yet. Your decision is saved when you press the
+      button above.
+    </p>
+  </div>
+  <p class="foot" id="foot"></p>
+</div>
+
+<script>
+/* Paste the /exec URL of your Apps Script deployment here. */
+const API_URL = 'https://script.google.com/macros/s/AKfycbyxBjxpArNd09-DcJilYhKiGdww-vwR4vKlqAqX_wHEOgxKmuXCVNmU3xnHQ5MEmVQ2/exec';
+
+const $ = s => document.querySelector(s);
+const token = new URLSearchParams(location.search).get('t') || '';
+let leaning = 'approve';
+let data = null;
+
+async function api(action, params = {}) {
+  if (API_URL.startsWith('PASTE_')) {
+    throw new Error('This page has not been set up: its API URL is still the placeholder.');
+  }
+  let res;
+  try {
+    res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ action }, params)),
+      redirect: 'follow'
+    });
+  } catch (e) {
+    throw new Error('No connection. Check your signal and reload this page.');
+  }
+  const text = await res.text();
+  let json;
+  try { json = JSON.parse(text); }
+  catch (e) { throw new Error('The server did not return JSON. Check the API URL.'); }
+  if (!json.ok) throw new Error(json.error || 'Request failed.');
+  return json;   // the API answers flat: {ok:true, …the payload}
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+function rows(pairs) {
+  const body = pairs.filter(p => p[1]).map(p =>
+    '<tr><th>' + esc(p[0]) + '</th><td>' + esc(p[1]) + '</td></tr>').join('');
+  return body ? '<table>' + body + '</table>' : '';
+}
+
+/** A dead end: a heading, a coloured line, and nothing to press. */
+function message(kind, heading, detail) {
+  $('#heading').textContent = heading;
+  $('#sub').textContent = '';
+  $('#banner').className = 'banner ' + kind;
+  $('#banner').textContent = detail;
+  $('#details').innerHTML = '';
+  $('#other').classList.add('hidden');
+  $('#form').classList.add('hidden');
+  $('#reassure').classList.add('hidden');
+}
+
+function paintRequest(d) {
+  const isAccess = d.kind === 'access';
+  $('#eyebrow').textContent = isAccess ? 'Entry approval' : 'Cafeteria approval';
+  $('#heading').textContent = d.person.fullName;
+  // Escaped once, at the point it goes into markup — so the line that builds
+  // the markup is the line you can check.
+  const asWho = d.role === 'security' ? 'Security' : 'head of ' + d.person.department;
+  $('#sub').innerHTML = 'You are being asked as <b>' + esc(asWho) + '</b>.';
+  $('#banner').classList.add('hidden');
+
+  $('#details').innerHTML = rows([
+    ['Type', d.person.typeLabel],
+    ['Company', d.person.company],
+    ['Agency', d.person.agency],
+    ['School', d.person.school],
+    ['Department', d.person.department],
+    ['Position', d.person.position],
+    ['Host', d.person.hostName],
+    ['Purpose', d.person.purpose],
+    ['Vehicle', d.person.vehiclePlate],
+    ['Valid until', d.person.validUntil],
+    ['Requested by', d.requestedBy],
+    ['Requested', d.requestedAt]
+  ]);
+
+  if (d.otherSlot) {
+    const who = d.otherSlot.role === 'security' ? 'Security'
+      : (d.otherSlot.name || 'the department head');
+    $('#other').textContent = d.otherSlot.status === 'approved'
+      ? who + ' has already approved. Yours is the last one needed.'
+      : 'This also needs ' + who + ', who has not answered yet.';
+    $('#other').classList.remove('hidden');
+  } else {
+    $('#other').classList.add('hidden');
+  }
+
+  $('#by').value = d.approverName || '';
+  $('#form').classList.remove('hidden');
+  $('#reassure').classList.remove('hidden');
+  paintButtons();
+}
+
+function paintButtons() {
+  const isAccess = data && data.kind === 'access';
+  const primary = $('#btn-primary'), alt = $('#btn-alt');
+  if (leaning === 'decline') {
+    primary.className = 'decline';
+    primary.textContent = 'Decline';
+    alt.textContent = 'No — approve instead';
+    $('#note').placeholder = 'Why not?';
+  } else {
+    primary.className = 'approve';
+    primary.textContent = isAccess ? 'Approve entry' : 'Approve cafeteria access';
+    alt.textContent = 'Decline instead';
+    $('#note').placeholder = 'Anything the guard should know';
+  }
+}
+
+function paintOutcome(o) {
+  const approved = o.decision === 'approve';
+  const settled = o.status !== 'pending';
+  const kind = o.kind === 'access' ? 'Entry' : 'Cafeteria access';
+  const heading = approved
+    ? (settled ? kind + ' approved' : 'Your approval is recorded')
+    : kind + ' declined';
+
+  let detail = o.message;
+  if (approved && o.kind === 'access' && o.status === 'approved' && !o.passSent) {
+    detail += ' The QR email did not go out — Security will need to resend it from the console.';
+  }
+
+  message(!approved ? 'bad' : (settled ? 'ok' : 'wait'), heading, detail);
+  $('#details').innerHTML = rows([
+    ['Person', o.person ? o.person.fullName : ''],
+    ['Your decision', approved ? 'Approved' : 'Declined'],
+    ['Overall', o.status]
+  ]);
+  const note = document.createElement('p');
+  note.className = 'note';
+  note.textContent = 'You can close this page. Nothing else is needed from you' +
+    (o.waitingOn ? ' — the other approver has been asked separately' : '') + '.';
+  $('#details').appendChild(note);
+}
+
+async function decide() {
+  const primary = $('#btn-primary');
+  primary.disabled = true;
+  $('#btn-alt').disabled = true;
+  const was = primary.textContent;
+  primary.textContent = 'Saving…';
+  try {
+    const outcome = await api('approval.decide', {
+      token, decision: leaning, by: $('#by').value, note: $('#note').value
+    });
+    paintOutcome(outcome);
+  } catch (e) {
+    // The buttons come back: a failure here must never look like a decision.
+    primary.disabled = false;
+    $('#btn-alt').disabled = false;
+    primary.textContent = was;
+    $('#banner').className = 'banner bad';
+    $('#banner').textContent = e.message;
+  }
+}
+
+$('#btn-primary').addEventListener('click', decide);
+$('#btn-alt').addEventListener('click', () => {
+  leaning = leaning === 'decline' ? 'approve' : 'decline';
+  $('#banner').classList.add('hidden');
+  paintButtons();
+});
+
+(async () => {
+  if (!token) {
+    message('bad', 'This link is incomplete',
+      'It is missing the part that says which request it is for. Open the link ' +
+      'from your email again, in full.');
+    return;
+  }
+  try {
+    data = await api('approval.review', { token });
+  } catch (e) {
+    message('bad', 'Could not load this request', e.message);
+    return;
+  }
+  $('#foot').textContent = 'gate and cafeteria';
+  if (data.state === 'pending') { paintRequest(data); return; }
+  message(data.state === 'settled' && data.decided === 'approved' ? 'ok'
+    : data.state === 'answered' ? 'ok' : 'bad', data.heading, data.detail);
+})();
+</script>
+</body>
+</html>
