@@ -1377,8 +1377,8 @@ $('#period-rows').addEventListener('click', async ev => {
       unitCost: Number(tr.querySelector('.p-cost').value),
       active: tr.querySelector('.p-active').checked
     });
-    message($('#app-msg'), 'Meal period updated.', 'ok');
     await loadSettings();
+    message($('#app-msg'), 'Meal period updated.', 'ok');
   } catch (e) { message($('#app-msg'), e.message); }
   finally { btn.disabled = false; }
 });

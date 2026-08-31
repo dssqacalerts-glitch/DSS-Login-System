@@ -3,13 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Cafeteria — Discovery Samal</title>
+<title>Gate — Discovery Samal</title>
 <meta name="theme-color" content="#0c1114">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <style>
-  /* A screen read from across a room: dark, few colours, very large type, and
-     nothing that needs touching. One colour per outcome, and no money anywhere
-     — spend belongs in the console, not on a wall the whole shift walks past. */
+  /* The same bones as the cafeteria screen, on purpose: a guard who has looked
+     at one should not have to learn the other. Two colours only — in and out —
+     because at a barrier those are the only two things that ever happen, and a
+     screen with a colour for every case is a screen nobody reads.
+
+     Nothing here says why anybody was refused. This board hangs where the
+     public walks past; a refusal is a conversation for the guard, in person. */
   :root {
     --bg: #0c1114;
     --panel: #141c21;
@@ -19,10 +23,10 @@
     --text-2: #b3c4cd;
     --muted: #7d94a0;
 
-    --served: #0ca30c;
-    --served-wash: #0e2a12;
-    --second: #fab219;
-    --second-wash: #2c2410;
+    --in: #0ca30c;
+    --in-wash: #0e2a12;
+    --out: #3987e5;
+    --out-wash: #101f31;
     --refused: #d03b3b;
     --refused-wash: #2c1516;
 
@@ -53,7 +57,7 @@
     font-size: clamp(11px, 1.4vmin, 18px); font-weight: 600; padding: .5vmin 1.2vmin;
     border-radius: 999px; background: var(--panel-2); color: var(--text-2); white-space: nowrap;
   }
-  .chip.live { color: var(--served); }
+  .chip.live { color: var(--in); }
   .chip.stale { background: var(--refused-wash); color: var(--refused); }
   .clock { font-size: clamp(18px, 2.6vmin, 40px); font-weight: 700; font-variant-numeric: tabular-nums; }
 
@@ -75,16 +79,14 @@
 
   /* ---- now serving ---- */
   .now { justify-content: center; transition: background .25s ease, border-color .25s ease; }
-  .now.served { background: var(--served-wash); border-color: var(--served); }
-  .now.second { background: var(--second-wash); border-color: var(--second); }
-  .now.refused { background: var(--refused-wash); border-color: var(--refused); }
+  .now.in { background: var(--in-wash); border-color: var(--in); }
+  .now.out { background: var(--out-wash); border-color: var(--out); }
   .verdict {
     font-size: clamp(13px, 1.9vmin, 24px); font-weight: 800; letter-spacing: .18em;
     text-transform: uppercase; color: var(--muted);
   }
-  .now.served .verdict { color: var(--served); }
-  .now.second .verdict { color: var(--second); }
-  .now.refused .verdict { color: var(--refused); }
+  .now.in .verdict { color: var(--in); }
+  .now.out .verdict { color: var(--out); }
   .who {
     font-size: clamp(30px, 7.2vmin, 104px); font-weight: 800; letter-spacing: -.025em;
     line-height: 1.02; margin: .8vmin 0 .4vmin; text-wrap: balance;
@@ -92,7 +94,6 @@
   .org { font-size: clamp(15px, 2.5vmin, 34px); color: var(--text-2); display: flex;
          align-items: center; gap: 1.2vmin; flex-wrap: wrap; }
   .detail { font-size: clamp(14px, 2.1vmin, 28px); color: var(--text-2); margin-top: 1.2vmin; }
-  .reason { font-size: clamp(13px, 1.9vmin, 24px); color: var(--refused); margin-top: .8vmin; }
 
   .tag {
     font-size: clamp(10px, 1.35vmin, 17px); font-weight: 700; letter-spacing: .08em;
@@ -119,9 +120,11 @@
   .feed .d { color: var(--muted); flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis;
              white-space: nowrap; max-width: 32%; }
   .feed .mark { width: 1.1vmin; height: 1.1vmin; min-width: 8px; min-height: 8px;
-                border-radius: 50%; flex: 0 0 auto; background: var(--served); }
-  .feed .row.no .mark { background: var(--refused); }
-  .feed .row.no .n { color: var(--text-2); }
+                border-radius: 50%; flex: 0 0 auto; background: var(--in); }
+  .feed .row.out .mark { background: var(--out); }
+  .feed .dir { font-size: clamp(9px, 1.2vmin, 15px); font-weight: 800; letter-spacing: .1em;
+               color: var(--in); flex: 0 0 auto; width: 3.4em; }
+  .feed .row.out .dir { color: var(--out); }
 
   /* ---- service + counters ---- */
   .service .big { font-size: clamp(24px, 4.4vmin, 62px); font-weight: 800; letter-spacing: -.02em; }
@@ -134,8 +137,10 @@
   .counter .v { font-size: clamp(26px, 5vmin, 70px); font-weight: 800; letter-spacing: -.03em; line-height: 1; }
   .counter .k { font-size: clamp(10px, 1.35vmin, 17px); font-weight: 700; letter-spacing: .12em;
                 text-transform: uppercase; color: var(--muted); margin-top: .8vmin; }
-  .counter.second .v { color: var(--second); }
-  .counter.refused .v { color: var(--refused); }
+  .counter.inn .v { color: var(--in); }
+  .counter.outt .v { color: var(--out); }
+  .counter.overdue .v { color: var(--refused); }
+  .counter.overdue.none .v { color: var(--text); }
 
   .bars { display: flex; flex-direction: column; gap: .9vmin; }
   .bar { display: grid; grid-template-columns: 30% 1fr auto; align-items: center; gap: 1.2vmin;
@@ -147,8 +152,15 @@
   .bar .v { font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
 
   .spark { display: flex; align-items: flex-end; gap: .5vmin; height: 7vmin; min-height: 42px; margin-top: .6vmin; }
-  .spark i { flex: 1 1 0; background: var(--series-2); border-radius: 3px 3px 0 0; min-height: 2px; display: block; }
-  .spark i.empty { background: var(--panel-2); }
+  .spark i { flex: 1 1 0; display: flex; flex-direction: column-reverse; gap: 2px; min-height: 2px; }
+  .spark i b { display: block; background: var(--in); border-radius: 3px 3px 0 0; min-height: 2px; }
+  .spark i u { display: block; background: var(--out); border-radius: 3px 3px 0 0; min-height: 2px; }
+  .spark i.empty { background: var(--panel-2); border-radius: 3px 3px 0 0; }
+  .legend { display: flex; gap: 1.4vmin; font-size: clamp(10px, 1.3vmin, 16px); color: var(--muted); }
+  .legend s { text-decoration: none; display: inline-flex; align-items: center; gap: .5vmin; }
+  .legend s::before { content: ''; width: 1vmin; height: 1vmin; min-width: 8px; min-height: 8px;
+                      border-radius: 2px; background: var(--in); }
+  .legend s.o::before { background: var(--out); }
   .sparkfoot { display: flex; justify-content: space-between; font-size: clamp(10px, 1.3vmin, 16px);
                color: var(--muted); margin-top: .5vmin; font-variant-numeric: tabular-nums; }
 
@@ -178,7 +190,7 @@
 
 <div id="screen" class="screen hidden">
   <header>
-    <div class="site" id="site">Discovery Samal <span>· cafeteria</span></div>
+    <div class="site" id="site">Discovery Samal <span>· gate</span></div>
     <div class="spacer"></div>
     <span class="chip" id="chip-priv"></span>
     <span class="chip live" id="chip-net">live</span>
@@ -189,39 +201,42 @@
     <div class="col left">
       <section class="card now" id="now">
         <div class="verdict" id="verdict">Ready</div>
-        <div class="who" id="who">Waiting for the next scan</div>
+        <div class="who" id="who">Waiting for the next pass</div>
         <div class="org" id="org"></div>
         <div class="detail" id="detail"></div>
-        <div class="reason" id="reason"></div>
       </section>
 
       <section class="card">
         <h2>Just now</h2>
-        <div class="feed scroll" id="feed"><div class="empty">Nothing served yet today.</div></div>
+        <div class="feed scroll" id="feed"><div class="empty">Nobody through yet today.</div></div>
       </section>
     </div>
 
     <div class="col right">
       <section class="card service" id="service">
-        <h2 id="service-h2">Now serving</h2>
+        <h2 id="service-h2">On site now</h2>
         <div class="big" id="service-name">—</div>
         <div class="sub" id="service-sub"></div>
       </section>
 
       <div class="counters">
-        <div class="counter"><div class="v" id="c-served">0</div><div class="k">Served</div></div>
-        <div class="counter second"><div class="v" id="c-second">0</div><div class="k">2nd meals</div></div>
-        <div class="counter refused"><div class="v" id="c-refused">0</div><div class="k">Turned away</div></div>
+        <div class="counter inn"><div class="v" id="c-in">0</div><div class="k">In today</div></div>
+        <div class="counter outt"><div class="v" id="c-out">0</div><div class="k">Out today</div></div>
+        <div class="counter overdue none"><div class="v" id="c-overdue">0</div><div class="k">Overdue</div></div>
       </div>
 
       <section class="card scroll">
-        <h2>By service</h2>
-        <div class="bars" id="by-period"></div>
-        <h2 style="margin-top:1.8vmin">Busiest departments</h2>
-        <div class="bars" id="by-dept"></div>
+        <h2 id="h-gates">By gate</h2>
+        <div class="bars" id="by-gate"></div>
+        <h2 style="margin-top:1.8vmin">Who is passing</h2>
+        <div class="bars" id="by-type"></div>
         <h2 style="margin-top:1.8vmin">Last two hours</h2>
         <div class="spark" id="spark"></div>
-        <div class="sparkfoot"><span id="spark-from">—</span><span id="spark-to">—</span></div>
+        <div class="sparkfoot">
+          <span id="spark-from">—</span>
+          <span class="legend"><s>in</s><s class="o">out</s></span>
+          <span id="spark-to">—</span>
+        </div>
       </section>
     </div>
   </main>
@@ -229,7 +244,7 @@
   <footer>
     <span id="foot-day">—</span>
     <span class="spacer"></span>
-    <span id="foot-methods"></span>
+    <span id="foot-gate"></span>
     <span>Press <b>P</b> for privacy mode · <b>F</b> for full screen</span>
   </footer>
 </div>
@@ -237,12 +252,20 @@
 <script>
 /* ==========================================================================
  *  CONFIGURE ME — the /exec URL of your Apps Script deployment.
- *  The display key goes in this page's own URL:  display.html?key=...
+ *
+ *  The display key goes in this page's own URL, and the gate is optional:
+ *
+ *    gate.html?key=...              every gate — the security office's board
+ *    gate.html?key=...&gate=Main    just that gate — the screen at the barrier
+ *
+ *  The gate name must match, letter for letter, the name that tablet was given
+ *  when it was set up. It is the same name the traffic report groups by.
  * ========================================================================== */
 const API_URL = 'https://script.google.com/macros/s/AKfycbyxBjxpArNd09-DcJilYhKiGdww-vwR4vKlqAqX_wHEOgxKmuXCVNmU3xnHQ5MEmVQ2/exec';
 
 const $ = s => document.querySelector(s);
 const KEY = new URLSearchParams(location.search).get('key') || '';
+const GATE = (new URLSearchParams(location.search).get('gate') || '').trim();
 const PRIV_KEY = 'ds-display.privacy';
 
 let state = {
@@ -305,50 +328,40 @@ function paintNow(last) {
   if (!last) {
     box.className = 'card now';
     $('#verdict').textContent = 'Ready';
-    $('#who').textContent = 'Waiting for the next scan';
+    $('#who').textContent = 'Waiting for the next pass';
     $('#org').innerHTML = '';
     $('#detail').textContent = '';
-    $('#reason').textContent = '';
     return;
   }
 
-  const served = last.served;
-  const second = served && last.nth >= 2;
-  box.className = 'card now ' + (!served ? 'refused' : second ? 'second' : 'served');
-
-  $('#verdict').textContent = !served ? 'Not served'
-    : second ? 'Second meal' : 'Served';
+  const going = last.direction === 'out';
+  box.className = 'card now ' + (going ? 'out' : 'in');
+  $('#verdict').textContent = going ? 'Signed out' : 'Signed in';
   $('#who').textContent = nameOf(last.fullName);
   $('#org').innerHTML =
     `<span class="tag ${esc(last.personType)}">${esc(last.personType)}</span>` +
     `<span>${esc(last.org || '')}</span>` +
-    `<span class="tag method">${esc(METHOD_LABEL[last.method] || last.method)}</span>`;
+    `<span class="tag method">${esc(METHOD_LABEL[last.method] || last.method)}</span>` +
+    (last.vehiclePlate ? `<span class="tag method">${esc(last.vehiclePlate)}</span>` : '');
 
-  if (served) {
-    const which = last.nth >= 2 ? '2nd meal of this duty' : '1st meal of this duty';
-    $('#detail').textContent = (last.mealPeriod ? cap(last.mealPeriod) + ' · ' : '') + which +
-      ' · ' + timeOf(last.at);
-    $('#reason').textContent = '';
-  } else {
-    $('#detail').textContent = timeOf(last.at);
-    // The reason is shown briefly and then cleared: the attendant needs it,
-    // the rest of the queue does not need it lingering on a wall.
-    $('#reason').textContent = last.reason || '';
-    state.clearAt = Date.now() + 9000;
-  }
+  // Which gate, always — on the all-gates board it is the whole point, and on a
+  // single-gate screen it is the reassurance that the screen is the right one.
+  const bits = [cap(last.gate || 'main') + ' gate', timeOf(last.at)];
+  $('#detail').textContent = bits.join(' · ');
 }
 
 const cap = s => String(s || '').charAt(0).toUpperCase() + String(s || '').slice(1);
 
 function paintFeed(rows) {
   const host = $('#feed');
-  if (!rows.length) { host.innerHTML = '<div class="empty">Nothing served yet today.</div>'; return; }
+  if (!rows.length) { host.innerHTML = '<div class="empty">Nobody through yet today.</div>'; return; }
   host.innerHTML = rows.slice(0, 8).map(r => `
-    <div class="row ${r.served ? '' : 'no'}">
+    <div class="row ${r.direction === 'out' ? 'out' : ''}">
       <span class="mark"></span>
+      <span class="dir">${r.direction === 'out' ? 'OUT' : 'IN'}</span>
       <span class="t">${timeOf(r.at)}</span>
       <span class="n">${esc(nameOf(r.fullName))}</span>
-      <span class="d">${esc(r.org || '')}</span>
+      <span class="d">${esc(GATE ? (r.org || '') : cap(r.gate || 'main'))}</span>
       <span class="tag method">${esc(METHOD_LABEL[r.method] || r.method)}</span>
     </div>`).join('');
   trimFeed();
@@ -375,64 +388,109 @@ function trimFeed() {
 window.addEventListener('resize', trimFeed);
 
 function bars(host, rows, colour) {
-  const max = Math.max(1, ...rows.map(r => r.meals));
+  const max = Math.max(1, ...rows.map(r => r.value));
   host.innerHTML = rows.length ? rows.map(r => `
     <div class="bar">
-      <span class="lbl">${esc(r.label || r.name)}</span>
-      <span class="track">${r.meals ? `<i class="fill" style="width:${Math.round(r.meals / max * 100)}%;
+      <span class="lbl">${esc(r.label)}</span>
+      <span class="track">${r.value ? `<i class="fill" style="width:${Math.round(r.value / max * 100)}%;
         ${colour ? 'background:' + colour : ''}"></i>` : ''}</span>
-      <span class="v">${r.meals}</span>
+      <span class="v">${esc(r.text === undefined ? r.value : r.text)}</span>
     </div>`).join('') : '<div class="empty">—</div>';
 }
 
 function paintSpark(points) {
-  const max = Math.max(1, ...points.map(p => p.meals));
+  // Both series share one scale. Drawn against separate maxima, a quiet gate's
+  // two departures would stand as tall as a shift change, which is exactly the
+  // impression a board like this must not give.
+  const max = Math.max(1, ...points.map(p => p.in + p.out));
   $('#spark').innerHTML = points.map(p => {
-    const h = p.meals ? Math.max(6, Math.round(p.meals / max * 100)) : 2;
-    return `<i class="${p.meals ? '' : 'empty'}" style="height:${h}%"></i>`;
+    const total = p.in + p.out;
+    if (!total) return '<i class="empty" style="height:2%"></i>';
+    const h = Math.max(6, Math.round(total / max * 100));
+    const inPct = Math.round(p.in / total * 100);
+    return `<i style="height:${h}%">` +
+      (p.in ? `<b style="height:${inPct}%"></b>` : '') +
+      (p.out ? `<u style="height:${100 - inPct}%"></u>` : '') +
+      '</i>';
   }).join('');
   $('#spark-from').textContent = points.length ? points[0].at : '';
   $('#spark-to').textContent = points.length ? points[points.length - 1].at : '';
 }
 
-function paint(feed) {
-  $('#site').innerHTML = esc(feed.site) + ' <span>· cafeteria</span>';
-  $('#foot-day').textContent = feed.day;
+const TYPE_LABEL = {
+  employee: 'Employees', ojt: 'OJT', contractor: 'Contractors',
+  supplier: 'Suppliers', visitor: 'Visitors'
+};
 
-  if (feed.service) {
+function paint(feed) {
+  const scope = feed.gate ? cap(feed.gate) + ' gate' : 'all gates';
+  $('#site').innerHTML = esc(feed.site) + ' <span>· ' + esc(scope) + '</span>';
+  $('#foot-day').textContent = feed.day;
+  $('#foot-gate').textContent = feed.gate
+    ? ''
+    : (feed.gates.length ? feed.gates.length + ' gates: ' + feed.gates.map(cap).join(' · ') : '');
+
+  // On site is a whole-site number, so a single-gate board does not show it —
+  // under one gate's name it would read as "this many came through here and
+  // never left", which is not what it counts. That board shows its own traffic
+  // instead, which is the number the guard standing there can actually verify.
+  if (feed.onsite) {
     $('#service').className = 'card service';
-    $('#service-h2').textContent = 'Now serving';
-    $('#service-name').textContent = feed.service.label;
-    $('#service-sub').textContent =
-      feed.service.startTime + '–' + feed.service.endTime +
-      ' · closes in ' + feed.service.closesIn + ' min';
-    state.polling = 5000;
+    $('#service-h2').textContent = 'On site now';
+    $('#service-name').textContent = feed.onsite.total;
+    const c = feed.onsite.counts || {};
+    const parts = Object.keys(TYPE_LABEL)
+      .filter(k => c[k])
+      .map(k => c[k] + ' ' + TYPE_LABEL[k].toLowerCase());
+    $('#service-sub').textContent = parts.length ? parts.join(' · ') : 'Nobody signed in.';
   } else {
     $('#service').className = 'card service closed';
-    $('#service-h2').textContent = 'Between services';
-    $('#service-name').textContent = feed.nextService ? feed.nextService.label : 'Closed';
-    $('#service-sub').textContent = feed.nextService
-      ? 'opens at ' + feed.nextService.startTime + ', in ' + feed.nextService.startsIn + ' min'
-      : 'No service scheduled.';
-    state.polling = 30000;
+    $('#service-h2').textContent = 'Through this gate today';
+    $('#service-name').textContent = feed.totals.in + feed.totals.out;
+    $('#service-sub').textContent =
+      feed.totals.in + ' in · ' + feed.totals.out + ' out';
   }
 
-  $('#c-served').textContent = feed.totals.served;
-  $('#c-second').textContent = feed.totals.secondMeals;
-  $('#c-refused').textContent = feed.totals.refused;
+  $('#c-in').textContent = feed.totals.in;
+  $('#c-out').textContent = feed.totals.out;
 
-  bars($('#by-period'), feed.byPeriod);
-  bars($('#by-dept'), feed.byDepartment.map(d => ({ label: d.name, meals: d.meals })),
-    'var(--series-2)');
+  const overdue = feed.onsite ? (feed.onsite.overdue || 0) : 0;
+  $('#c-overdue').textContent = feed.onsite ? overdue : '—';
+  // Zero overdue is good news and must not be painted as an alarm.
+  $('#c-overdue').closest('.counter').className =
+    'counter overdue' + (overdue ? '' : ' none');
+
+  // On a single-gate board "by gate" is one bar about itself, which tells
+  // nobody anything. Show the direction split there instead.
+  if (feed.gate) {
+    $('#h-gates').textContent = 'In and out';
+    bars($('#by-gate'), [
+      { label: 'In', value: feed.totals.in },
+      { label: 'Out', value: feed.totals.out }
+    ], 'var(--in)');
+  } else {
+    $('#h-gates').textContent = 'By gate';
+    bars($('#by-gate'), feed.byGate.map(g => ({
+      label: cap(g.name), value: g.in + g.out,
+      text: g.in + ' / ' + g.out
+    })));
+  }
+
+  const types = Object.keys(feed.byType || {})
+    .map(t => ({ label: TYPE_LABEL[t] || cap(t),
+                 value: feed.byType[t].in + feed.byType[t].out }))
+    .sort((a, b) => b.value - a.value);
+  bars($('#by-type'), types, 'var(--series-2)');
+
   paintSpark(feed.throughput);
-
-  const methods = Object.keys(feed.byMethod || {});
-  $('#foot-methods').textContent = methods.length
-    ? methods.map(m => (METHOD_LABEL[m] || m) + ' ' + feed.byMethod[m]).join(' · ')
-    : '';
-
   paintFeed(feed.recent || []);
   paintNow(feed.last);
+
+  // A gate is quiet for long stretches and then busy for twenty minutes. Poll
+  // faster while people are actually moving.
+  const recentMovement = (feed.throughput || []).slice(-3)
+    .reduce((n, p) => n + p.in + p.out, 0);
+  state.polling = recentMovement ? 5000 : 15000;
 }
 
 function paintNet(ok) {
@@ -458,7 +516,7 @@ let lastFeed = null;
 
 async function tick() {
   try {
-    const feed = await api('display.feed', { seq: state.seq });
+    const feed = await api('display.gateFeed', { seq: state.seq, gate: GATE || undefined });
     state.lastGood = Date.now();
     paintNet(true);
     if (feed.timezone) siteZone = feed.timezone;
@@ -483,19 +541,16 @@ function showSetup(msg) {
   $('#screen').classList.add('hidden');
   $('#setup').classList.remove('hidden');
   $('#setup-msg').innerHTML = esc(msg) +
-    '<br><br>Open this page as <code>display.html?key=YOUR_DISPLAY_KEY</code>. ' +
-    'Run <code>generateDisplayKey()</code> in the Apps Script editor once and save ' +
-    'the value as the <code>DISPLAY_KEY</code> script property.';
+    '<br><br>Open this page as <code>gate.html?key=YOUR_DISPLAY_KEY</code> for all ' +
+    'four gates, or <code>gate.html?key=YOUR_DISPLAY_KEY&amp;gate=Main</code> for one. ' +
+    'It is the same key the cafeteria screen uses: run <code>generateDisplayKey()</code> ' +
+    'in the Apps Script editor once and save the value as the ' +
+    '<code>DISPLAY_KEY</code> script property.';
 }
 
 /* ------------------------------------------------------------- the room -- */
 setInterval(() => {
   $('#clock').textContent = siteTime();
-  // Clear a lingering refusal reason without waiting for the next scan.
-  if (state.clearAt && Date.now() > state.clearAt) {
-    state.clearAt = 0;
-    $('#reason').textContent = '';
-  }
   if (Date.now() - state.lastGood > 20000) paintNet(false);
 }, 1000);
 
